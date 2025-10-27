@@ -26,8 +26,8 @@ Let's create a link for your Twitter bio:
 
 1. **Destination URL**: `https://www.comfy.org/`
 2. **Source**: Select `twitter`
-3. **Medium**: Leave as `-- Auto --` (or select `social`)
-4. **Campaign**: Leave as `-- Auto --` (or select `bio_link`)
+3. **Medium**: Leave empty (or select `social`)
+4. **Campaign**: Leave empty (or type `twitter_bio_2024`)
 5. **Names/Variants**: Leave empty
 6. Click **"⚡ Generate Links"**
 
@@ -43,7 +43,7 @@ Create 10 links for influencer collaboration:
 1. **Destination URL**: `https://www.comfy.org/`
 2. **Source**: Select `bilibili`
 3. **Medium**: Select `influencer`
-4. **Campaign**: Select `influencer_collab`
+4. **Campaign**: Type `influencer_collab_2024`
 5. **Names/Variants**: Enter (one per line):
    ```
    creator_alice
@@ -75,8 +75,8 @@ Click **"Copy"** button next to any link to copy it to your clipboard. Paste it 
 
 ```
 Source: twitter / instagram / linkedin
-Medium: -- Auto --
-Campaign: -- Auto --
+Medium: (empty or "social")
+Campaign: (empty or "bio_link_2024")
 Names: (empty)
 ```
 
@@ -91,7 +91,7 @@ Names: (empty)
 ```
 Source: youtube
 Medium: video
-Campaign: tutorial_content
+Campaign: tutorial_series_2024
 Names: (empty)
 ```
 
@@ -106,7 +106,7 @@ Names: (empty)
 ```
 Source: bilibili
 Medium: influencer
-Campaign: influencer_collab
+Campaign: influencer_collab_q1_2024
 Names:
   tech_reviewer_zhang
   creative_coder_li

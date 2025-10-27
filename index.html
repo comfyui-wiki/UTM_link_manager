@@ -531,13 +531,15 @@
             <div class="generator-panel">
                 <div class="section-title">Link Generator</div>
                 <div class="section-subtitle">
-                    Single link: leave Names empty. Batch: enter multiple names (one per line).
+                    Create single or batch links. Source, Medium, and Names all support batch input (one per line).
                 </div>
 
                 <div class="example-box">
                     <strong>💡 Examples:</strong>
                     <div class="example-item">Single: <code>twitter</code> + empty Names → <code>links.comfy.org/twitter</code></div>
-                    <div class="example-item">Batch: <code>bilibili</code> + 10 names → 10 links like <code>bili-inf-creator1</code></div>
+                    <div class="example-item">Batch Names: <code>bilibili</code> + 10 names → 10 links like <code>bili-creator1</code></div>
+                    <div class="example-item">Batch Sources: <code>Other → tiktok, telegram</code> → 2 links for each platform</div>
+                    <div class="example-item">Combined: 3 sources × 5 names = 15 links!</div>
                 </div>
 
                 <div class="form-grid">
@@ -549,7 +551,7 @@
 
                     <div class="form-group">
                         <label for="utmSource" class="required">Source</label>
-                        <select id="utmSource" onchange="updateShortAlias()">
+                        <select id="utmSource" onchange="handleSourceChange()">
                             <option value="">-- Select --</option>
                             <optgroup label="Global Platforms">
                                 <option value="twitter">twitter</option>
@@ -570,14 +572,17 @@
                                 <option value="email">email</option>
                                 <option value="partner">partner</option>
                                 <option value="influencer">influencer</option>
+                                <option value="other">✏️ Other (custom)</option>
                             </optgroup>
                         </select>
-                        <div class="help-text">Traffic platform</div>
+                        <textarea id="utmSourceCustom" placeholder="One per line for batch:&#10;tiktok&#10;telegram&#10;newsletter" style="display: none; margin-top: 8px; min-height: 80px; resize: vertical;" oninput="updateSourceBatchIndicator()"></textarea>
+                        <div id="sourceBatchIndicator" style="display: none; font-size: 11px; color: #667eea; margin-top: 5px; font-weight: 600;"></div>
+                        <div class="help-text">Traffic platform (supports batch: one per line)</div>
                     </div>
 
                     <div class="form-group">
                         <label for="utmMedium">Medium</label>
-                        <select id="utmMedium">
+                        <select id="utmMedium" onchange="handleMediumChange()">
                             <option value="">-- Auto --</option>
                             <option value="social">social</option>
                             <option value="video">video</option>
@@ -587,24 +592,29 @@
                             <option value="email">email</option>
                             <option value="partner">partner</option>
                             <option value="paid_social">paid_social</option>
+                            <option value="other">✏️ Other (custom)</option>
                         </select>
-                        <div class="help-text">Channel type</div>
+                        <textarea id="utmMediumCustom" placeholder="One per line for batch:&#10;podcast&#10;webinar" style="display: none; margin-top: 8px; min-height: 80px; resize: vertical;" oninput="updateMediumBatchIndicator()"></textarea>
+                        <div id="mediumBatchIndicator" style="display: none; font-size: 11px; color: #667eea; margin-top: 5px; font-weight: 600;"></div>
+                        <div class="help-text">Channel type (supports batch: one per line)</div>
                     </div>
 
                     <div class="form-group">
                         <label for="utmCampaign">Campaign</label>
-                        <select id="utmCampaign" onchange="updateShortAlias()">
-                            <option value="">-- Auto --</option>
-                            <option value="bio_link">bio_link</option>
-                            <option value="organic_post">organic_post</option>
-                            <option value="video_description">video_description</option>
-                            <option value="influencer_collab">influencer_collab</option>
-                            <option value="cloud_beta_launch">cloud_beta_launch</option>
-                            <option value="tutorial_content">tutorial_content</option>
-                            <option value="partnership">partnership</option>
-                            <option value="showcase">showcase</option>
-                        </select>
-                        <div class="help-text">Marketing activity</div>
+                        <input type="text" id="utmCampaign" list="campaignSuggestions" placeholder="e.g., cloud_beta_launch_2024" onchange="updateShortAlias()">
+                        <datalist id="campaignSuggestions">
+                            <option value="cloud_beta_launch">
+                            <option value="influencer_collab">
+                            <option value="product_launch">
+                            <option value="partnership">
+                            <option value="webinar_series">
+                            <option value="holiday_sale">
+                            <option value="community_event">
+                            <option value="tutorial_series">
+                            <option value="showcase">
+                            <option value="giveaway">
+                        </datalist>
+                        <div class="help-text">Marketing activity name (custom or select suggestion)</div>
                     </div>
 
                     <div class="form-group">
@@ -730,8 +740,10 @@
             // Auto-save form state on change
             document.getElementById('baseUrl').addEventListener('change', saveFormState);
             document.getElementById('utmSource').addEventListener('change', saveFormState);
+            document.getElementById('utmSourceCustom').addEventListener('input', saveFormState);
             document.getElementById('utmMedium').addEventListener('change', saveFormState);
-            document.getElementById('utmCampaign').addEventListener('change', saveFormState);
+            document.getElementById('utmMediumCustom').addEventListener('input', saveFormState);
+            document.getElementById('utmCampaign').addEventListener('input', saveFormState);
             document.getElementById('shortPrefix').addEventListener('change', saveFormState);
             document.getElementById('linkNote').addEventListener('change', saveFormState);
             
@@ -747,7 +759,9 @@
             const formState = {
                 baseUrl: document.getElementById('baseUrl').value,
                 utmSource: document.getElementById('utmSource').value,
+                utmSourceCustom: document.getElementById('utmSourceCustom').value,
                 utmMedium: document.getElementById('utmMedium').value,
+                utmMediumCustom: document.getElementById('utmMediumCustom').value,
                 utmCampaign: document.getElementById('utmCampaign').value,
                 shortPrefix: document.getElementById('shortPrefix').value,
                 linkNote: document.getElementById('linkNote').value,
@@ -766,7 +780,9 @@
                 
                 if (formState.baseUrl) document.getElementById('baseUrl').value = formState.baseUrl;
                 if (formState.utmSource) document.getElementById('utmSource').value = formState.utmSource;
+                if (formState.utmSourceCustom) document.getElementById('utmSourceCustom').value = formState.utmSourceCustom;
                 if (formState.utmMedium) document.getElementById('utmMedium').value = formState.utmMedium;
+                if (formState.utmMediumCustom) document.getElementById('utmMediumCustom').value = formState.utmMediumCustom;
                 if (formState.utmCampaign) document.getElementById('utmCampaign').value = formState.utmCampaign;
                 if (formState.shortPrefix) document.getElementById('shortPrefix').value = formState.shortPrefix;
                 if (formState.linkNote) document.getElementById('linkNote').value = formState.linkNote;
@@ -776,6 +792,16 @@
                     document.querySelectorAll('input[name="defaultLinkMode"]').forEach(radio => {
                         radio.checked = radio.value === formState.defaultLinkMode;
                     });
+                }
+                
+                // Restore custom input visibility and batch indicators
+                if (formState.utmSource === 'other' && formState.utmSourceCustom) {
+                    document.getElementById('utmSourceCustom').style.display = 'block';
+                    updateSourceBatchIndicator();
+                }
+                if (formState.utmMedium === 'other' && formState.utmMediumCustom) {
+                    document.getElementById('utmMediumCustom').style.display = 'block';
+                    updateMediumBatchIndicator();
                 }
                 
                 // Update short alias if source is loaded
@@ -861,8 +887,108 @@
             indicator.style.display = 'block';
         }
 
+        function handleSourceChange() {
+            const sourceSelect = document.getElementById('utmSource');
+            const sourceCustom = document.getElementById('utmSourceCustom');
+            const indicator = document.getElementById('sourceBatchIndicator');
+            
+            if (sourceSelect.value === 'other') {
+                sourceCustom.style.display = 'block';
+                sourceCustom.focus();
+            } else {
+                sourceCustom.style.display = 'none';
+                sourceCustom.value = '';
+                indicator.style.display = 'none';
+            }
+            
+            updateShortAlias();
+        }
+
+        function handleMediumChange() {
+            const mediumSelect = document.getElementById('utmMedium');
+            const mediumCustom = document.getElementById('utmMediumCustom');
+            const indicator = document.getElementById('mediumBatchIndicator');
+            
+            if (mediumSelect.value === 'other') {
+                mediumCustom.style.display = 'block';
+                mediumCustom.focus();
+            } else {
+                mediumCustom.style.display = 'none';
+                mediumCustom.value = '';
+                indicator.style.display = 'none';
+            }
+        }
+
+        function updateSourceBatchIndicator() {
+            const sourceCustom = document.getElementById('utmSourceCustom').value.trim();
+            const indicator = document.getElementById('sourceBatchIndicator');
+            
+            if (!sourceCustom) {
+                indicator.style.display = 'none';
+                return;
+            }
+            
+            const sources = sourceCustom.split('\n').filter(s => s.trim());
+            if (sources.length > 1) {
+                indicator.textContent = `📦 Batch: ${sources.length} sources`;
+                indicator.style.display = 'block';
+            } else {
+                indicator.style.display = 'none';
+            }
+            
+            updateShortAlias();
+        }
+
+        function updateMediumBatchIndicator() {
+            const mediumCustom = document.getElementById('utmMediumCustom').value.trim();
+            const indicator = document.getElementById('mediumBatchIndicator');
+            
+            if (!mediumCustom) {
+                indicator.style.display = 'none';
+                return;
+            }
+            
+            const mediums = mediumCustom.split('\n').filter(m => m.trim());
+            if (mediums.length > 1) {
+                indicator.textContent = `📦 Batch: ${mediums.length} mediums`;
+                indicator.style.display = 'block';
+            } else {
+                indicator.style.display = 'none';
+            }
+        }
+
+        function getSourceValues() {
+            const sourceSelect = document.getElementById('utmSource').value;
+            const sourceCustom = document.getElementById('utmSourceCustom').value.trim();
+            
+            if (sourceSelect === 'other' && sourceCustom) {
+                return sourceCustom.split('\n').map(s => s.trim()).filter(s => s);
+            }
+            return sourceSelect ? [sourceSelect] : [];
+        }
+
+        function getMediumValues() {
+            const mediumSelect = document.getElementById('utmMedium').value;
+            const mediumCustom = document.getElementById('utmMediumCustom').value.trim();
+            
+            if (mediumSelect === 'other' && mediumCustom) {
+                return mediumCustom.split('\n').map(m => m.trim()).filter(m => m);
+            }
+            return mediumSelect ? [mediumSelect] : [''];
+        }
+
+        function getSourceValue() {
+            const values = getSourceValues();
+            return values.length > 0 ? values[0] : '';
+        }
+
+        function getMediumValue() {
+            const values = getMediumValues();
+            return values.length > 0 ? values[0] : '';
+        }
+
         function updateShortAlias() {
-            const source = document.getElementById('utmSource').value;
+            const source = getSourceValue();
             const baseUrl = document.getElementById('baseUrl').value;
             
             if (!source) return;
@@ -881,19 +1007,19 @@
             else if (baseUrl.includes('blog')) suffix = '-blog';
             else if (baseUrl.includes('tutorials')) suffix = '-tut';
             
-            const prefix = (shortMap[source] || source) + suffix;
+            const prefix = (shortMap[source] || source.substring(0, 4)) + suffix;
             document.getElementById('shortPrefix').value = prefix;
         }
 
         function generateLinks() {
             const baseUrl = document.getElementById('baseUrl').value.trim();
-            const source = document.getElementById('utmSource').value;
-            let medium = document.getElementById('utmMedium').value;
-            let campaign = document.getElementById('utmCampaign').value;
+            const sources = getSourceValues();
+            const mediums = getMediumValues();
+            const campaign = document.getElementById('utmCampaign').value;
             const namesInput = document.getElementById('batchNames').value.trim();
             const shortPrefix = document.getElementById('shortPrefix').value.trim();
 
-            if (!baseUrl || !source) {
+            if (!baseUrl || sources.length === 0) {
                 alert('Please fill in: Destination URL and Platform');
                 return;
             }
@@ -903,70 +1029,89 @@
             const newLinks = [];
             const duplicates = [];
             
-            names.forEach((name, index) => {
-                const params = new URLSearchParams();
-                params.append('utm_source', source);
-                
-                // Only add medium if user selected one
-                if (medium) {
-                    params.append('utm_medium', medium);
-                }
-                
-                // Only add campaign if user selected one
-                if (campaign) {
-                    params.append('utm_campaign', campaign);
-                }
-                
-                // Only add content if there is a name
-                if (name) {
-                    params.append('utm_content', name);
-                }
+            let linkIndex = 0;
+            
+            // Create cartesian product: sources × mediums × names
+            sources.forEach(source => {
+                mediums.forEach(medium => {
+                    names.forEach(name => {
+                        const params = new URLSearchParams();
+                        params.append('utm_source', source);
+                        
+                        // Only add medium if it has a value
+                        if (medium) {
+                            params.append('utm_medium', medium);
+                        }
+                        
+                        // Only add campaign if user selected one
+                        if (campaign) {
+                            params.append('utm_campaign', campaign);
+                        }
+                        
+                        // Only add content if there is a name
+                        if (name) {
+                            params.append('utm_content', name);
+                        }
 
-                const separator = baseUrl.includes('?') ? '&' : '?';
-                const fullUrl = baseUrl + separator + params.toString();
+                        const separator = baseUrl.includes('?') ? '&' : '?';
+                        const fullUrl = baseUrl + separator + params.toString();
 
-                // Check for duplicate URL
-                const existingLink = links.find(l => l.fullUrl === fullUrl);
-                if (existingLink) {
-                    duplicates.push({ name: name || 'single link', url: fullUrl });
-                    return; // Skip this link
-                }
+                        // Check for duplicate URL
+                        const existingLink = links.find(l => l.fullUrl === fullUrl);
+                        if (existingLink) {
+                            duplicates.push({ name: name || source, url: fullUrl });
+                            return; // Skip this link
+                        }
 
-                let shortAlias = '';
-                if (name && shortPrefix) {
-                    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 30);
-                    shortAlias = `${shortPrefix}-${cleanName}`;
-                } else if (shortPrefix) {
-                    shortAlias = shortPrefix;
-                } else if (!name) {
-                    shortAlias = source + (baseUrl.includes('download') ? '-dl' : baseUrl.includes('cloud') ? '-cloud' : '');
-                }
+                        let shortAlias = '';
+                        const shortMap = {
+                            'twitter': 'tw', 'discord': 'dc', 'youtube': 'yt', 'linkedin': 'li',
+                            'reddit': 'rd', 'instagram': 'ig', 'facebook': 'fb', 'bilibili': 'bili',
+                            'wechat': 'wx', 'wechat_group': 'wxg', 'weibo': 'wb', 
+                            'xiaohongshu': 'xhs', 'zhihu': 'zh', 'douyin': 'dy', 'github': 'gh'
+                        };
+                        
+                        const sourcePrefix = shortMap[source] || source.substring(0, 4).toLowerCase();
+                        
+                        if (name && shortPrefix) {
+                            const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 30);
+                            shortAlias = `${shortPrefix}-${cleanName}`;
+                        } else if (name) {
+                            const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 30);
+                            shortAlias = `${sourcePrefix}-${cleanName}`;
+                        } else if (shortPrefix) {
+                            shortAlias = shortPrefix;
+                        } else {
+                            shortAlias = sourcePrefix + (baseUrl.includes('download') ? '-dl' : baseUrl.includes('cloud') ? '-cloud' : '');
+                        }
 
-                // Check for duplicate short alias
-                if (shortAlias) {
-                    const existingAlias = links.find(l => l.shortAlias === shortAlias);
-                    if (existingAlias) {
-                        shortAlias = shortAlias + '-' + Date.now().toString().slice(-4);
-                    }
-                }
+                        // Check for duplicate short alias
+                        if (shortAlias) {
+                            const existingAlias = links.find(l => l.shortAlias === shortAlias);
+                            if (existingAlias) {
+                                shortAlias = shortAlias + '-' + Date.now().toString().slice(-4);
+                            }
+                        }
 
-                // Get default link mode from radio buttons
-                const defaultMode = document.querySelector('input[name="defaultLinkMode"]:checked').value;
-                
-                newLinks.push({
-                    id: Date.now() + index,
-                    baseUrl: baseUrl,
-                    fullUrl: fullUrl,
-                    source: source,
-                    medium: medium,
-                    campaign: campaign,
-                    content: name,
-                    shortAlias: shortAlias,
-                    note: name ? `${source} - ${name}` : `${source} - ${campaign}`,
-                    shortLink: '',
-                    useCustomAlias: defaultMode === 'custom',
-                    status: 'pending',
-                    createdAt: new Date().toISOString()
+                        // Get default link mode from radio buttons
+                        const defaultMode = document.querySelector('input[name="defaultLinkMode"]:checked').value;
+                        
+                        newLinks.push({
+                            id: Date.now() + linkIndex++,
+                            baseUrl: baseUrl,
+                            fullUrl: fullUrl,
+                            source: source,
+                            medium: medium,
+                            campaign: campaign,
+                            content: name,
+                            shortAlias: shortAlias,
+                            note: name ? `${source} - ${name}` : `${source} - ${campaign || 'link'}`,
+                            shortLink: '',
+                            useCustomAlias: defaultMode === 'custom',
+                            status: 'pending',
+                            createdAt: new Date().toISOString()
+                        });
+                    });
                 });
             });
 
@@ -1035,10 +1180,10 @@
                 html += `<td>
                     <div class="mode-indicator">
                         <label class="link-mode-toggle">
-                            <input type="checkbox" ${link.useCustomAlias !== false ? 'checked' : ''} onchange="toggleLinkMode(${index}, this.checked)">
+                            <input type="checkbox" ${link.useCustomAlias === true ? 'checked' : ''} onchange="toggleLinkMode(${index}, this.checked)">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span class="mode-label">${link.useCustomAlias !== false ? 'Custom' : 'Random'}</span>
+                        <span class="mode-label">${link.useCustomAlias === true ? 'Custom' : 'Random'}</span>
                     </div>
                 </td>`;
                 html += `<td>${link.shortLink ? `<a href="${link.shortLink}" target="_blank" class="short-link">${link.shortLink.replace('https://links.comfy.org/', '')}</a>` : '<span style="color: #999;">-</span>'}</td>`;
@@ -1247,14 +1392,14 @@
             }
 
             // Check for missing aliases in custom mode links
-            const customLinks = selectedLinks.filter(l => l.useCustomAlias);
+            const customLinks = selectedLinks.filter(l => l.useCustomAlias === true);
             const missingAlias = customLinks.filter(l => !l.shortAlias);
             if (missingAlias.length > 0) {
                 alert(`⚠️ ${missingAlias.length} link(s) using Custom mode are missing short alias.\n\nPlease:\n1. Add alias in table, OR\n2. Switch those links to Random mode (toggle switch)`);
                 return;
             }
 
-            const customCount = selectedLinks.filter(l => l.useCustomAlias).length;
+            const customCount = selectedLinks.filter(l => l.useCustomAlias === true).length;
             const randomCount = selectedLinks.length - customCount;
             let modeText = '';
             if (customCount > 0 && randomCount > 0) {
@@ -1313,14 +1458,19 @@
                 domain: 'links.comfy.org'
             };
 
-            // Add custom alias only if this specific link uses custom mode
-            if (link.useCustomAlias && link.shortAlias) {
-                payload.custom_bitlinks = [`links.comfy.org/${link.shortAlias}`];
+            // Add custom keyword only if this specific link uses custom mode AND has an alias
+            if (link.useCustomAlias === true && link.shortAlias) {
+                payload.keyword = link.shortAlias;  // Use 'keyword' parameter for custom aliases
+                console.log(`Creating CUSTOM short link with keyword: ${link.shortAlias}`);
+            } else {
+                console.log(`Creating RANDOM short link for: ${link.fullUrl}`);
             }
-            // Otherwise, Bitly will auto-generate a random short code
+
+            console.log('📤 Bitly API Request Payload:', JSON.stringify(payload, null, 2));
 
             try {
-                const response = await fetch('https://api-ssl.bitly.com/v4/shorten', {
+                // Use /v4/bitlinks endpoint instead of /v4/shorten for custom keywords
+                const response = await fetch('https://api-ssl.bitly.com/v4/bitlinks', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${apiToken}`,
@@ -1329,7 +1479,10 @@
                     body: JSON.stringify(payload)
                 });
 
+                console.log('📥 Bitly API Response Status:', response.status);
+
                 const data = await response.json();
+                console.log('📥 Bitly API Response Data:', JSON.stringify(data, null, 2));
 
                 if (response.ok) {
                     return { success: true, shortLink: data.link };
@@ -1337,6 +1490,7 @@
                     return { success: false, error: data.message || data.description || 'Unknown error' };
                 }
             } catch (error) {
+                console.error('❌ Bitly API Error:', error);
                 return { success: false, error: error.message };
             }
         }

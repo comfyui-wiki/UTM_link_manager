@@ -79,7 +79,7 @@ Result: 3 links with different `utm_content` values
 | **Destination URL** | ✅ Yes | Where users land | `https://www.comfy.org/` |
 | **Source** | ✅ Yes | Traffic platform | `twitter`, `bilibili`, `discord` |
 | **Medium** | ⬜ No | Channel type | `social`, `video`, `influencer` |
-| **Campaign** | ⬜ No | Marketing activity | `bio_link`, `influencer_collab` |
+| **Campaign** | ⬜ No | Marketing activity name | `cloud_beta_launch_2024`, `holiday_sale` |
 | **Short Prefix** | ⬜ No | Auto-suggested prefix | `tw`, `bili-inf` |
 | **Note** | ⬜ No | Internal memo | `Q4 Campaign` |
 | **Mode** | - | Default link mode | Custom or Random |
@@ -132,10 +132,10 @@ Names: (empty)
 ```
 Source: youtube
 Medium: video
-Campaign: tutorial_content
+Campaign: tutorial_series_2024
 Names: (empty)
 ```
-**Generated URL**: `https://www.comfy.org/?utm_source=youtube&utm_medium=video&utm_campaign=tutorial_content`
+**Generated URL**: `https://www.comfy.org/?utm_source=youtube&utm_medium=video&utm_campaign=tutorial_series_2024`
 
 **Short Link**: `links.comfy.org/yt-tut`
 
