@@ -37,6 +37,7 @@
         }
         
         if (!token) {
+            appState.setBitlyTokenValid(false);
             updateTokenStatus(false, 'No Token');
             return;
         }
@@ -64,6 +65,12 @@
         const setupBtn = document.getElementById('bitlySetupBtn');
         const pushBtn = document.getElementById('bulkBitlyBtn');
         
+        if (!setupBtn || !pushBtn) {
+            // DOM elements not ready yet, try again later
+            setTimeout(() => updateTokenStatus(valid, text), 100);
+            return;
+        }
+        
         if (valid) {
             setupBtn.innerHTML = '✅ Bitly';
             setupBtn.className = 'btn btn-small btn-success';
@@ -75,6 +82,7 @@
         }
         
         // Call updateSelectionInfo if it exists (from table.js)
+        // This ensures the button is enabled/disabled based on selection
         if (window.table && window.table.updateSelectionInfo) {
             window.table.updateSelectionInfo();
         }
@@ -104,6 +112,8 @@
                     // User cancelled unlock, don't show panel
                     return;
                 }
+                // After unlocking, re-check token status
+                await checkBitlyToken();
             } else {
                 // Fallback: show locked state
                 panel.innerHTML = `
@@ -164,6 +174,8 @@
             const unlocked = await window.encryptionDialog.unlockEncryptionDialog();
             if (unlocked) {
                 await loadBitlyPanelContent();
+                // Re-check token status after unlocking
+                await checkBitlyToken();
             }
         }
     }
@@ -175,6 +187,15 @@
     // ========== Token Storage ==========
 
     async function loadBitlyToken() {
+        // Check if the panel elements exist before trying to set values
+        const tokenInput = document.getElementById('bitlyApiToken');
+        const groupIdInput = document.getElementById('bitlyGroupId');
+        
+        if (!tokenInput || !groupIdInput) {
+            // Panel not loaded yet, elements don't exist
+            return;
+        }
+        
         const password = encryption.getEncryptionPassword();
         
         if (encryption.isEncryptionEnabled() && password) {
@@ -182,28 +203,28 @@
             const encrypted = localStorage.getItem('bitly_api_token_encrypted');
             if (encrypted) {
                 const decrypted = await encryption.decryptData(encrypted, password);
-                if (decrypted) {
-                    document.getElementById('bitlyApiToken').value = decrypted;
+                if (decrypted && tokenInput) {
+                    tokenInput.value = decrypted;
                 }
             }
             // Load encrypted Group ID
             const encryptedGroupId = localStorage.getItem('bitly_group_id_encrypted');
             if (encryptedGroupId) {
                 const decrypted = await encryption.decryptData(encryptedGroupId, password);
-                if (decrypted) {
-                    document.getElementById('bitlyGroupId').value = decrypted;
+                if (decrypted && groupIdInput) {
+                    groupIdInput.value = decrypted;
                 }
             }
         } else if (!encryption.isEncryptionEnabled()) {
             // Load plain text token
             const saved = localStorage.getItem('bitly_api_token');
-            if (saved) {
-                document.getElementById('bitlyApiToken').value = saved;
+            if (saved && tokenInput) {
+                tokenInput.value = saved;
             }
             // Load plain text Group ID
             const savedGroupId = localStorage.getItem('bitly_group_id');
-            if (savedGroupId) {
-                document.getElementById('bitlyGroupId').value = savedGroupId;
+            if (savedGroupId && groupIdInput) {
+                groupIdInput.value = savedGroupId;
             }
         }
     }
@@ -279,6 +300,12 @@
                 appState.setBitlyTokenValid(true);
                 updateTokenStatus(true, data.login || 'Connected');
                 hideBitlyPanel();
+                
+                // Ensure button state is updated after verification
+                if (window.table && window.table.updateSelectionInfo) {
+                    window.table.updateSelectionInfo();
+                }
+                
                 Swal.fire({
                     icon: 'success',
                     title: 'Token Verified!',

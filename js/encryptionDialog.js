@@ -127,12 +127,34 @@
         
         utils.showSuccess('Unlocked! You can now use your tokens.', 'Unlocked');
         
-        // Reload tokens
-        if (bitly && bitly.loadBitlyToken) {
-            await bitly.loadBitlyToken();
-        }
-        if (bitly && bitly.checkBitlyToken) {
-            await bitly.checkBitlyToken();
+        // Reload tokens - use window.bitly directly to ensure we get the latest reference
+        if (window.bitly) {
+            if (window.bitly.loadBitlyToken) {
+                await window.bitly.loadBitlyToken();
+            }
+            if (window.bitly.checkBitlyToken) {
+                await window.bitly.checkBitlyToken();
+                // Ensure button state is updated after token check
+                if (window.table && window.table.updateSelectionInfo) {
+                    setTimeout(() => {
+                        window.table.updateSelectionInfo();
+                    }, 200);
+                }
+            }
+        } else if (bitly) {
+            // Fallback to cached reference
+            if (bitly.loadBitlyToken) {
+                await bitly.loadBitlyToken();
+            }
+            if (bitly.checkBitlyToken) {
+                await bitly.checkBitlyToken();
+                // Ensure button state is updated after token check
+                if (window.table && window.table.updateSelectionInfo) {
+                    setTimeout(() => {
+                        window.table.updateSelectionInfo();
+                    }, 200);
+                }
+            }
         }
         
         return true;
@@ -248,19 +270,21 @@
     };
 
     // Auto-unlock on load if needed
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(() => {
-                if (encryption.isEncryptionEnabled() && !encryption.getEncryptionPassword()) {
-                    unlockEncryptionDialog();
-                }
-            }, 500);
-        });
-    } else {
-        setTimeout(() => {
-            if (encryption.isEncryptionEnabled() && !encryption.getEncryptionPassword()) {
+    function autoUnlockIfNeeded() {
+        if (encryption.isEncryptionEnabled() && !encryption.getEncryptionPassword()) {
+            // Check if there are any encrypted tokens before prompting unlock
+            const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
+            if (hasEncryptedToken) {
                 unlockEncryptionDialog();
             }
-        }, 500);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(autoUnlockIfNeeded, 500);
+        });
+    } else {
+        setTimeout(autoUnlockIfNeeded, 500);
     }
 })();

@@ -1,5 +1,8 @@
 // ========== Encryption Functions ==========
 
+(function() {
+    'use strict';
+
 // Generate encryption key from password
 const deriveKey = async (password) => {
     const encoder = new TextEncoder();
@@ -111,3 +114,4 @@ window.encryption = {
     clearEncryptionPassword
 };
 
+})();

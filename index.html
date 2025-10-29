@@ -236,13 +236,13 @@
         let selectedIndices = appState.getSelectedIndices();
         let bitlyTokenValid = appState.getBitlyTokenValid();
         
-        // Legacy function references (using function wrappers to avoid declaration conflicts)
-        function isEncryptionEnabled() { return encryption.isEncryptionEnabled(); }
-        function getEncryptionPassword() { return encryption.getEncryptionPassword(); }
-        function setEncryptionPassword(password) { return encryption.setEncryptionPassword(password); }
-        function clearEncryptionPassword() { return encryption.clearEncryptionPassword(); }
-        async function encryptData(data, password) { return await encryption.encryptData(data, password); }
-        async function decryptData(encryptedData, password) { return await encryption.decryptData(encryptedData, password); }
+        // Legacy function references (using const to avoid declaration conflicts with encryption.js)
+        const isEncryptionEnabled = () => encryption.isEncryptionEnabled();
+        const getEncryptionPassword = () => encryption.getEncryptionPassword();
+        const setEncryptionPassword = (password) => encryption.setEncryptionPassword(password);
+        const clearEncryptionPassword = () => encryption.clearEncryptionPassword();
+        const encryptData = async (data, password) => await encryption.encryptData(data, password);
+        const decryptData = async (encryptedData, password) => await encryption.decryptData(encryptedData, password);
         
         function showSuccess(message, title) { return utils.showSuccess(message, title); }
         function showError(message, title) { return utils.showError(message, title); }
@@ -254,7 +254,7 @@
         function downloadCSV(content, filename) { return utils.downloadCSV(content, filename); }
         function downloadJSON(content, filename) { return utils.downloadJSON(content, filename); }
         function parseCSVLine(line) { return utils.parseCSVLine(line); }
-        const Toast = utils.Toast;
+        // Toast is already available via utils.Toast - don't redeclare
 
         // ========== Main Application Code ==========
 
@@ -262,9 +262,38 @@
         document.addEventListener('DOMContentLoaded', function() {
             table.updateTable();
             table.updateStats();
-            bitly.loadBitlyToken();
-            bitly.checkBitlyToken();
             form.loadFormState();
+            
+            // Always try to check Bitly token if possible
+            // If encryption is enabled but not unlocked, we'll check after unlock
+            setTimeout(() => {
+                // Check if we have a token (either encrypted or plain)
+                const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
+                const hasPlainToken = localStorage.getItem('bitly_api_token');
+                const isUnlocked = !encryption.isEncryptionEnabled() || encryption.getEncryptionPassword();
+                
+                // Only check if we have a token and (not encrypted OR already unlocked)
+                if ((hasEncryptedToken || hasPlainToken) && isUnlocked) {
+                    bitly.loadBitlyToken();
+                    bitly.checkBitlyToken().then(() => {
+                        // After token check, update selection info to show/hide Push button
+                        setTimeout(() => {
+                            if (window.table && window.table.updateSelectionInfo) {
+                                window.table.updateSelectionInfo();
+                            }
+                        }, 200);
+                    }).catch(err => {
+                        console.error('Error checking Bitly token:', err);
+                    });
+                } else {
+                    // No token or locked, ensure button is hidden
+                    setTimeout(() => {
+                        if (window.table && window.table.updateSelectionInfo) {
+                            window.table.updateSelectionInfo();
+                        }
+                    }, 100);
+                }
+            }, 200);
             
             // Update batch indicator on input
             document.getElementById('batchNames').addEventListener('input', form.updateBatchIndicator);
