@@ -188,15 +188,12 @@
                     <div class="toolbar-right">
                         <button class="btn btn-small" onclick="window.storage.exportToCSV()">💾 Export CSV</button>
                         <button class="btn btn-small btn-secondary" onclick="window.storage.importFromCSV()">📁 Import CSV</button>
-                        <button class="btn btn-small" onclick="window.storage.exportSettings()">⚙️ Export Settings</button>
-                        <button class="btn btn-small btn-secondary" onclick="window.storage.importSettings()">⚙️ Import Settings</button>
                         <button class="btn btn-small btn-danger" onclick="window.storage.resetAllSettings()">🔄 Reset All</button>
                         <button class="btn btn-small" id="bitlySetupBtn" onclick="window.bitly.showBitlyPanel()">🔗 Bitly</button>
                     </div>
                 </div>
 
                 <input type="file" id="importFileInput" accept=".csv" onchange="window.storage.handleImportFile(event)">
-                <input type="file" id="importSettingsInput" accept=".json" onchange="window.storage.handleImportSettings(event)">
 
                 <!-- Bitly Settings Panel (will be dynamically populated) -->
                 <div class="bitly-panel" id="bitlyPanel" style="display: none;"></div>
@@ -316,19 +313,12 @@
             });
         });
 
-        // Clear encryption password when window closes/unloads
-        window.addEventListener('beforeunload', function() {
-            encryption.clearEncryptionPassword();
-        });
-
-        // Also clear on visibility change (tab hidden/closed)
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') {
-                // Optional: clear password when tab becomes hidden
-                // Uncomment if you want to lock immediately when switching tabs
-                // encryption.clearEncryptionPassword();
-            }
-        });
+        // Note: Password is stored in sessionStorage, which automatically:
+        // - Persists across page refreshes (same session)
+        // - Clears when browser/tab is closed (new session)
+        // 
+        // We don't need to manually clear password on beforeunload.
+        // sessionStorage behavior handles refresh vs close automatically.
     </script>
 </body>
 </html>

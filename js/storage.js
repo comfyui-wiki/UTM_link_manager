@@ -311,9 +311,6 @@
         exportToCSV,
         importFromCSV,
         handleImportFile,
-        exportSettings,
-        importSettings,
-        handleImportSettings,
         resetAllSettings
     };
 })();
