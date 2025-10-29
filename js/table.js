@@ -119,11 +119,19 @@
         
         document.getElementById('selectionInfo').textContent = `${count} selected`;
         
-        // Only enable Bitly push button if token is valid
+        // Check if Bitly token exists (encrypted or plain)
+        const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
+        const hasPlainToken = localStorage.getItem('bitly_api_token');
+        const hasToken = hasEncryptedToken || hasPlainToken;
+        
+        // Show Push to Bitly button if token exists (encrypted or plain)
+        // It will prompt for password when clicked if needed
         const pushBtn = document.getElementById('bulkBitlyBtn');
-        if (bitlyTokenValid) {
-            pushBtn.disabled = count === 0;
+        if (hasToken) {
             pushBtn.style.display = 'inline-block';
+            // Disable only if no selection, not based on token validation
+            // Token will be verified when button is clicked
+            pushBtn.disabled = count === 0;
         } else {
             pushBtn.disabled = true;
             pushBtn.style.display = 'none';

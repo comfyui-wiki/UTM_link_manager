@@ -27,21 +27,45 @@
         let token = null;
         const password = encryption.getEncryptionPassword();
         
+        // Check if token exists (encrypted or plain)
+        const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
+        const hasPlainToken = localStorage.getItem('bitly_api_token');
+        const hasToken = hasEncryptedToken || hasPlainToken;
+        
+        // If encryption is enabled but no password, we can't decrypt yet
+        // But we should still show that token exists (it will be verified when used)
+        if (encryption.isEncryptionEnabled() && !password) {
+            if (hasEncryptedToken) {
+                // Token exists but locked - show button, will verify when used
+                appState.setBitlyTokenValid(false); // Not verified yet
+                updateTokenStatus(false, 'Locked');
+                return;
+            }
+        }
+        
+        // Try to get token for verification
         if (encryption.isEncryptionEnabled() && password) {
-            const encrypted = localStorage.getItem('bitly_api_token_encrypted');
-            if (encrypted) {
-                token = await encryption.decryptData(encrypted, password);
+            if (hasEncryptedToken) {
+                token = await encryption.decryptData(hasEncryptedToken, password);
             }
         } else if (!encryption.isEncryptionEnabled()) {
-            token = localStorage.getItem('bitly_api_token');
+            token = hasPlainToken;
         }
         
         if (!token) {
-            appState.setBitlyTokenValid(false);
-            updateTokenStatus(false, 'No Token');
+            // No token at all
+            if (!hasToken) {
+                appState.setBitlyTokenValid(false);
+                updateTokenStatus(false, 'No Token');
+            } else {
+                // Token exists but decryption failed (wrong password?)
+                appState.setBitlyTokenValid(false);
+                updateTokenStatus(false, 'Locked');
+            }
             return;
         }
-
+        
+        // Verify token with Bitly API
         try {
             const response = await fetch('https://api-ssl.bitly.com/v4/user', {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -71,15 +95,26 @@
             return;
         }
         
+        // Check if token exists (encrypted or plain) - button should show if token exists
+        const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
+        const hasPlainToken = localStorage.getItem('bitly_api_token');
+        const hasToken = hasEncryptedToken || hasPlainToken;
+        
         if (valid) {
             setupBtn.innerHTML = '✅ Bitly';
             setupBtn.className = 'btn btn-small btn-success';
-            pushBtn.style.display = 'inline-block';
-        } else {
+        } else if (hasToken) {
+            // Token exists but not verified (locked or invalid)
             setupBtn.innerHTML = '⚠️ Bitly';
             setupBtn.className = 'btn btn-small btn-warning';
-            pushBtn.style.display = 'none';
+        } else {
+            // No token at all
+            setupBtn.innerHTML = '⚠️ Bitly';
+            setupBtn.className = 'btn btn-small btn-warning';
         }
+        
+        // Push button visibility and state will be handled by updateSelectionInfo
+        // which checks both hasToken and valid status
         
         // Call updateSelectionInfo if it exists (from table.js)
         // This ensures the button is enabled/disabled based on selection
@@ -369,10 +404,32 @@
             apiToken = localStorage.getItem('bitly_api_token');
         }
         
-        if (!apiToken || !bitlyTokenValid) {
-            utils.showWarning('Please set up and verify Bitly API token first (click "⚙️ Setup Token" button)', 'Token Required');
+        // Check if token exists (decrypted or plain)
+        // Don't require bitlyTokenValid check here - token will be validated during API call
+        // If token was just decrypted, we should continue even if not yet validated
+        if (!apiToken) {
+            utils.showWarning('Please set up Bitly API token first (click "⚠️ Bitly" button)', 'Token Required');
             showBitlyPanel();
             return;
+        }
+        
+        // If we just decrypted the token, verify it now (optional, but good for UX)
+        // This is a quick check to show user if token is valid before creating links
+        if (!bitlyTokenValid && apiToken) {
+            // Try a quick validation (non-blocking, won't fail if invalid)
+            try {
+                const response = await fetch('https://api-ssl.bitly.com/v4/user', {
+                    headers: { 'Authorization': `Bearer ${apiToken}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    appState.setBitlyTokenValid(true);
+                    updateTokenStatus(true, data.login || 'Connected');
+                }
+            } catch (error) {
+                // Continue anyway - token validation will happen during link creation
+                console.log('Token validation check failed, but continuing:', error);
+            }
         }
 
         const selectedLinks = Array.from(selectedIndices)

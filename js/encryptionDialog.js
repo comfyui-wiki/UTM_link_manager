@@ -310,7 +310,8 @@
     window.encryptionDialog = {
         setupEncryptionDialog,
         unlockEncryptionDialog,
-        changeEncryptionPassword
+        changeEncryptionPassword,
+        verifyPasswordWhenNeeded
     };
 
     // Note: We don't auto-unlock on page load anymore.
