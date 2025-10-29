@@ -129,9 +129,24 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="linkNote">Note</label>
-                        <input type="text" id="linkNote" placeholder="Your memo">
-                        <div class="help-text">Internal only</div>
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="unifiedNoteEnabled" onchange="window.form.toggleUnifiedNote()" style="width: auto; margin: 0;">
+                            <span>Use unified note for all links</span>
+                        </label>
+                        <div id="unifiedNoteContainer" style="display: none; margin-top: 10px;">
+                            <div style="margin-bottom: 10px;">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                    <input type="radio" name="noteMode" value="manual" checked style="margin: 0; width: auto;">
+                                    <span style="font-weight: normal;">Manual input</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-left: 20px;">
+                                    <input type="radio" name="noteMode" value="auto" style="margin: 0; width: auto;">
+                                    <span style="font-weight: normal;">Auto generate from UTM</span>
+                                </label>
+                            </div>
+                            <input type="text" id="linkNote" placeholder="Enter note (required for manual mode)" style="margin-bottom: 5px;">
+                            <div class="help-text" id="noteHelpText">Enter note for all links (required)</div>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -303,6 +318,7 @@
             document.getElementById('utmMediumCustom').addEventListener('input', form.saveFormState);
             document.getElementById('utmCampaign').addEventListener('input', form.saveFormState);
             document.getElementById('shortPrefix').addEventListener('change', form.saveFormState);
+            document.getElementById('linkNote').addEventListener('input', form.saveFormState);
             document.getElementById('linkNote').addEventListener('change', form.saveFormState);
             
             // Save names field on input (debounced)

@@ -23,6 +23,8 @@
     // ========== Form State Management ==========
 
     function saveFormState() {
+        const unifiedNoteEnabled = document.getElementById('unifiedNoteEnabled').checked;
+        const noteMode = document.querySelector('input[name="noteMode"]:checked')?.value || 'manual';
         const formState = {
             baseUrl: document.getElementById('baseUrl').value,
             utmSource: document.getElementById('utmSource').value,
@@ -33,7 +35,9 @@
             shortPrefix: document.getElementById('shortPrefix').value,
             linkNote: document.getElementById('linkNote').value,
             batchNames: document.getElementById('batchNames').value,
-            defaultLinkMode: document.querySelector('input[name="defaultLinkMode"]:checked').value
+            defaultLinkMode: document.querySelector('input[name="defaultLinkMode"]:checked').value,
+            unifiedNoteEnabled: unifiedNoteEnabled,
+            noteMode: noteMode
         };
         localStorage.setItem('form_state', JSON.stringify(formState));
     }
@@ -260,6 +264,19 @@
         let linkIndex = 0;
         
         // Create cartesian product: sources × mediums × names
+        // Check unified note validation before processing
+        const unifiedNoteEnabled = document.getElementById('unifiedNoteEnabled').checked;
+        if (unifiedNoteEnabled) {
+            const noteMode = document.querySelector('input[name="noteMode"]:checked')?.value || 'manual';
+            if (noteMode === 'manual') {
+                const manualNote = document.getElementById('linkNote').value.trim();
+                if (!manualNote) {
+                    utils.showError('Please enter a note when unified note is enabled in manual mode.', 'Note Required');
+                    return;
+                }
+            }
+        }
+
         sources.forEach(source => {
             mediums.forEach(medium => {
                 names.forEach(name => {
@@ -324,6 +341,27 @@
                     // Get default link mode from radio buttons
                     const defaultMode = document.querySelector('input[name="defaultLinkMode"]:checked').value;
                     
+                    // Generate note based on unified note settings
+                    let note = '';
+                    if (unifiedNoteEnabled) {
+                        const noteMode = document.querySelector('input[name="noteMode"]:checked')?.value || 'manual';
+                        if (noteMode === 'manual') {
+                            // Manual mode: use the entered note (already validated above)
+                            note = document.getElementById('linkNote').value.trim();
+                        } else {
+                            // Auto mode: generate from UTM parameters
+                            const noteParts = [];
+                            if (source) noteParts.push(source);
+                            if (medium) noteParts.push(medium);
+                            if (campaign) noteParts.push(campaign);
+                            if (name) noteParts.push(name);
+                            note = noteParts.join(' - ');
+                        }
+                    } else {
+                        // Legacy mode: generate from existing logic (keep old behavior)
+                        note = '';
+                    }
+                    
                     newLinks.push({
                         id: Date.now() + linkIndex++,
                         baseUrl: baseUrl,
@@ -333,7 +371,7 @@
                         campaign: campaign,
                         content: name,
                         shortAlias: shortAlias,
-                        note: name ? `${source} - ${name}` : `${source} - ${campaign || 'link'}`,
+                        note: note || (name ? `${source} - ${name}` : `${source} - ${campaign || 'link'}`),
                         shortLink: '',
                         useCustomAlias: defaultMode === 'custom',
                         status: 'pending',
@@ -368,6 +406,43 @@
         utils.showSuccess(`${newLinks.length} link${newLinks.length > 1 ? 's' : ''} added!${skipped}`, 'Links Generated');
     }
 
+    // ========== Unified Note Management ==========
+    
+    function toggleUnifiedNote() {
+        const enabled = document.getElementById('unifiedNoteEnabled').checked;
+        const container = document.getElementById('unifiedNoteContainer');
+        const noteInput = document.getElementById('linkNote');
+        
+        if (enabled) {
+            container.style.display = 'block';
+            updateNoteModeHelp();
+        } else {
+            container.style.display = 'none';
+            noteInput.value = '';
+        }
+        
+        saveFormState();
+    }
+    
+    function updateNoteModeHelp() {
+        const noteMode = document.querySelector('input[name="noteMode"]:checked')?.value || 'manual';
+        const helpText = document.getElementById('noteHelpText');
+        const noteInput = document.getElementById('linkNote');
+        
+        if (!helpText || !noteInput) return; // Elements might not be loaded yet
+        
+        if (noteMode === 'manual') {
+            helpText.textContent = 'Enter note for all links (required)';
+            noteInput.placeholder = 'Enter note (required)';
+            noteInput.required = true;
+        } else {
+            helpText.textContent = 'Note will be auto-generated from UTM parameters (source - medium - campaign - content)';
+            noteInput.placeholder = 'Auto-generated from UTM';
+            noteInput.value = '';
+            noteInput.required = false;
+        }
+    }
+
     // Export to global scope
     window.form = {
         saveFormState,
@@ -383,6 +458,28 @@
         getSourceValue,
         getMediumValue,
         updateShortAlias,
-        generateLinks
+        generateLinks,
+        toggleUnifiedNote
     };
+    
+    // Listen for note mode changes
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            const noteModeRadios = document.querySelectorAll('input[name="noteMode"]');
+            noteModeRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    updateNoteModeHelp();
+                    saveFormState();
+                });
+            });
+        });
+    } else {
+        const noteModeRadios = document.querySelectorAll('input[name="noteMode"]');
+        noteModeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                updateNoteModeHelp();
+                saveFormState();
+            });
+        });
+    }
 })();
