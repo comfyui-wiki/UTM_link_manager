@@ -429,26 +429,6 @@
             color: #856404;
         }
 
-        .token-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .token-status.connected {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .token-status.disconnected {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
         .link-mode-toggle {
             position: relative;
             display: inline-block;
@@ -676,44 +656,39 @@
 
                 <div class="toolbar">
                     <div class="toolbar-left">
-                        <span class="token-status" id="tokenStatus">
-                            <span id="tokenStatusIcon">⚠️</span>
-                            <span id="tokenStatusText">No Bitly Token</span>
-                        </span>
                         <span class="selection-info" id="selectionInfo">0 selected</span>
                         <button class="btn btn-small btn-success" id="bulkBitlyBtn" onclick="createBitlyForSelected()" disabled style="display: none;">
                             🔗 Push to Bitly
+                        </button>
+                        <button class="btn btn-small btn-success" id="bulkSheetsBtn" onclick="syncToSheetsSelected()" disabled style="display: none;">
+                            📊 Sync to Sheets
+                        </button>
+                        <button class="btn btn-small btn-secondary" id="bulkImportBtn" onclick="importFromSheets()" disabled style="display: none;">
+                            📥 Import from Sheets
                         </button>
                         <button class="btn btn-small btn-danger" id="bulkDeleteBtn" onclick="deleteSelected()" disabled>
                             🗑️ Delete
                         </button>
                     </div>
                     <div class="toolbar-right">
-                        <button class="btn btn-small" onclick="exportToCSV()">💾 Export</button>
-                        <button class="btn btn-small btn-secondary" onclick="importFromCSV()">📁 Import</button>
-                        <button class="btn btn-small btn-warning" onclick="showBitlyPanel()">⚙️ Setup Token</button>
+                        <button class="btn btn-small" onclick="exportToCSV()">💾 Export CSV</button>
+                        <button class="btn btn-small btn-secondary" onclick="importFromCSV()">📁 Import CSV</button>
+                        <button class="btn btn-small" onclick="exportSettings()">⚙️ Export Settings</button>
+                        <button class="btn btn-small btn-secondary" onclick="importSettings()">⚙️ Import Settings</button>
+                        <button class="btn btn-small btn-danger" onclick="resetAllSettings()">🔄 Reset All</button>
+                        <button class="btn btn-small" id="bitlySetupBtn" onclick="showBitlyPanel()">🔗 Bitly</button>
+                        <button class="btn btn-small" id="sheetsSetupBtn" onclick="showSheetsPanel()">📊 Google Sheets</button>
                     </div>
                 </div>
 
                 <input type="file" id="importFileInput" accept=".csv" onchange="handleImportFile(event)">
+                <input type="file" id="importSettingsInput" accept=".json" onchange="handleImportSettings(event)">
 
-                <!-- Bitly Settings Panel -->
-                <div class="bitly-panel" id="bitlyPanel" style="display: none;">
-                    <h4>⚙️ Bitly API Token</h4>
-                    <div class="help-text" style="margin-bottom: 15px; color: #856404;">
-                        Get token: <a href="https://bitly.com" target="_blank" style="color: #667eea;">bitly.com</a> → Settings → Developer Settings → API
-                    </div>
-                    <div class="form-group">
-                        <label for="bitlyApiToken">Token</label>
-                        <input type="text" id="bitlyApiToken" placeholder="Paste token here" style="margin-bottom: 10px;">
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-small" onclick="verifyAndSaveBitlyToken()">✅ Verify</button>
-                        <button class="btn btn-small btn-danger" onclick="clearBitlyToken()">🗑️ Clear</button>
-                        <button class="btn btn-small btn-secondary" onclick="hideBitlyPanel()">Close</button>
-                    </div>
-                </div>
+                <!-- Bitly Settings Panel (will be dynamically populated) -->
+                <div class="bitly-panel" id="bitlyPanel" style="display: none;"></div>
+
+                <!-- Google Sheets Settings Panel (will be dynamically populated) -->
+                <div class="bitly-panel" id="sheetsPanel" style="display: none;"></div>
 
                 <div class="table-container" id="tableContainer">
                     <div class="empty-state">
@@ -729,6 +704,111 @@
         let links = JSON.parse(localStorage.getItem('comfyui_utm_links') || '[]');
         let selectedIndices = new Set();
         let bitlyTokenValid = false;
+        let sheetsTokenValid = false;
+        let encryptionKey = null; // Cached encryption key
+
+        // ========== Encryption Functions ==========
+        
+        // Generate encryption key from password
+        async function deriveKey(password) {
+            const encoder = new TextEncoder();
+            const passwordBuffer = encoder.encode(password);
+            
+            // Use PBKDF2 to derive a key from password
+            const baseKey = await crypto.subtle.importKey(
+                'raw',
+                passwordBuffer,
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            // Use a fixed salt (stored openly) - in production, use per-user salt
+            const salt = encoder.encode('comfyui-utm-manager-v1');
+            
+            return await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                baseKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        // Encrypt data
+        async function encryptData(data, password) {
+            const key = await deriveKey(password);
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(data);
+            
+            // Generate random IV
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            
+            const encryptedBuffer = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                dataBuffer
+            );
+            
+            // Combine IV and encrypted data
+            const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+            combined.set(iv);
+            combined.set(new Uint8Array(encryptedBuffer), iv.length);
+            
+            // Convert to base64 for storage
+            return btoa(String.fromCharCode(...combined));
+        }
+
+        // Decrypt data
+        async function decryptData(encryptedData, password) {
+            try {
+                const key = await deriveKey(password);
+                
+                // Decode from base64
+                const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+                
+                // Extract IV and encrypted data
+                const iv = combined.slice(0, 12);
+                const data = combined.slice(12);
+                
+                const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    key,
+                    data
+                );
+                
+                const decoder = new TextDecoder();
+                return decoder.decode(decryptedBuffer);
+            } catch (error) {
+                console.error('Decryption failed:', error);
+                return null;
+            }
+        }
+
+        // Check if encryption is set up
+        function isEncryptionEnabled() {
+            return localStorage.getItem('encryption_enabled') === 'true';
+        }
+
+        // Get cached encryption password (only in memory, never stored)
+        function getEncryptionPassword() {
+            return sessionStorage.getItem('encryption_password');
+        }
+
+        // Set encryption password (only for current session)
+        function setEncryptionPassword(password) {
+            sessionStorage.setItem('encryption_password', password);
+        }
+
+        // Clear encryption password
+        function clearEncryptionPassword() {
+            sessionStorage.removeItem('encryption_password');
+        }
 
         // SweetAlert2 Helper Functions
         const Toast = Swal.mixin({
@@ -798,6 +878,8 @@
             updateStats();
             loadBitlyToken();
             checkBitlyToken();
+            loadSheetsToken();
+            checkSheetsToken();
             loadFormState();
             
             // Update batch indicator on input
@@ -891,7 +973,17 @@
         }
 
         async function checkBitlyToken() {
-            const token = localStorage.getItem('bitly_api_token');
+            let token = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encrypted = localStorage.getItem('bitly_api_token_encrypted');
+                if (encrypted) {
+                    token = await decryptData(encrypted, password);
+                }
+            } else if (!isEncryptionEnabled()) {
+                token = localStorage.getItem('bitly_api_token');
+            }
             
             if (!token) {
                 updateTokenStatus(false, 'No Token');
@@ -918,20 +1010,16 @@
         }
 
         function updateTokenStatus(valid, text) {
-            const statusEl = document.getElementById('tokenStatus');
-            const iconEl = document.getElementById('tokenStatusIcon');
-            const textEl = document.getElementById('tokenStatusText');
+            const setupBtn = document.getElementById('bitlySetupBtn');
             const pushBtn = document.getElementById('bulkBitlyBtn');
             
             if (valid) {
-                statusEl.className = 'token-status connected';
-                iconEl.textContent = '✅';
-                textEl.textContent = text;
+                setupBtn.innerHTML = '✅ Bitly';
+                setupBtn.className = 'btn btn-small btn-success';
                 pushBtn.style.display = 'inline-block';
             } else {
-                statusEl.className = 'token-status disconnected';
-                iconEl.textContent = '⚠️';
-                textEl.textContent = text;
+                setupBtn.innerHTML = '⚠️ Bitly';
+                setupBtn.className = 'btn btn-small btn-warning';
                 pushBtn.style.display = 'none';
             }
             
@@ -1231,7 +1319,7 @@
             html += '<th style="min-width: 120px;">Short Link</th>';
             html += '<th style="min-width: 150px;">Note</th>';
             html += '<th style="width: 80px;">Status</th>';
-            html += '<th style="width: 140px;">Actions</th>';
+            html += '<th style="width: 180px;">Actions</th>';
             html += '</tr></thead><tbody>';
 
             links.forEach((link, index) => {
@@ -1257,6 +1345,7 @@
                 html += `<td><span class="status-badge ${link.shortLink ? 'created' : 'pending'}">${link.shortLink ? 'Created' : 'Pending'}</span></td>`;
                 html += `<td>
                     <button class="btn btn-small action-btn" onclick="copyFromTable(${index})">Copy</button>
+                    ${link.shortLink ? `<button class="btn btn-small action-btn" onclick="openBitlyStats('${link.shortLink}')" style="background: #0d6efd;">📊 Stats</button>` : ''}
                     <button class="btn btn-small btn-danger action-btn" onclick="deleteLink(${index})">Del</button>
                 </td>`;
                 html += '</tr>';
@@ -1302,7 +1391,7 @@
             const count = selectedIndices.size;
             document.getElementById('selectionInfo').textContent = `${count} selected`;
             
-            // Only enable push button if token is valid
+            // Only enable Bitly push button if token is valid
             const pushBtn = document.getElementById('bulkBitlyBtn');
             if (bitlyTokenValid) {
                 pushBtn.disabled = count === 0;
@@ -1310,6 +1399,21 @@
             } else {
                 pushBtn.disabled = true;
                 pushBtn.style.display = 'none';
+            }
+            
+            // Only enable Google Sheets sync button if token is valid
+            const syncBtn = document.getElementById('bulkSheetsBtn');
+            const importBtn = document.getElementById('bulkImportBtn');
+            if (sheetsTokenValid) {
+                syncBtn.disabled = count === 0;
+                syncBtn.style.display = 'inline-block';
+                importBtn.disabled = false;
+                importBtn.style.display = 'inline-block';
+            } else {
+                syncBtn.disabled = true;
+                syncBtn.style.display = 'none';
+                importBtn.disabled = true;
+                importBtn.style.display = 'none';
             }
             
             document.getElementById('bulkDeleteBtn').disabled = count === 0;
@@ -1343,12 +1447,59 @@
         }
 
         async function deleteLink(index) {
-            if (await showConfirm('Are you sure you want to delete this link?', 'Delete Link')) {
-                links.splice(index, 1);
-                selectedIndices.delete(index);
-                saveLinks();
-                updateTable();
-                updateStats();
+            const link = links[index];
+            const hasBitlyLink = !!link.shortLink;
+            
+            let deleteBitly = false;
+            
+            if (hasBitlyLink) {
+                const result = await Swal.fire({
+                    title: 'Delete Link',
+                    html: `
+                        <p>Are you sure you want to delete this link?</p>
+                        <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="deleteBitlyCheckbox" style="width: auto; cursor: pointer;">
+                                <span>Also delete Bitly short link: <strong>${link.shortLink.replace('https://links.comfy.org/', '')}</strong></span>
+                            </label>
+                        </div>
+                    `,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Delete',
+                    cancelButtonText: 'Cancel',
+                    preConfirm: () => {
+                        deleteBitly = document.getElementById('deleteBitlyCheckbox').checked;
+                    }
+                });
+                
+                if (!result.isConfirmed) return;
+            } else {
+                if (!await showConfirm('Are you sure you want to delete this link?', 'Delete Link')) {
+                    return;
+                }
+            }
+            
+            // Delete from Bitly if requested
+            if (deleteBitly && hasBitlyLink) {
+                const bitlyResult = await deleteBitlyShortLink(link.shortLink);
+                if (!bitlyResult.success) {
+                    showWarning(`Link deleted from manager, but failed to delete from Bitly: ${bitlyResult.error}`, 'Partial Delete');
+                }
+            }
+            
+            // Delete from local storage
+            links.splice(index, 1);
+            selectedIndices.delete(index);
+            saveLinks();
+            updateTable();
+            updateStats();
+            
+            if (deleteBitly && hasBitlyLink) {
+                showSuccess('Link deleted from manager and Bitly');
+            } else {
                 showSuccess('Link deleted successfully');
             }
         }
@@ -1356,13 +1507,90 @@
         async function deleteSelected() {
             if (selectedIndices.size === 0) return;
             
-            if (await showConfirm(`Are you sure you want to delete ${selectedIndices.size} selected link${selectedIndices.size > 1 ? 's' : ''}?`, 'Delete Selected Links')) {
-                const indicesToDelete = Array.from(selectedIndices).sort((a, b) => b - a);
-                indicesToDelete.forEach(index => links.splice(index, 1));
-                selectedIndices.clear();
-                saveLinks();
-                updateTable();
-                updateStats();
+            const selectedLinks = Array.from(selectedIndices).map(i => links[i]);
+            const withBitlyLinks = selectedLinks.filter(l => l.shortLink);
+            
+            let deleteBitly = false;
+            
+            if (withBitlyLinks.length > 0) {
+                const result = await Swal.fire({
+                    title: 'Delete Selected Links',
+                    html: `
+                        <p>Are you sure you want to delete <strong>${selectedIndices.size}</strong> selected link${selectedIndices.size > 1 ? 's' : ''}?</p>
+                        <div style="margin-top: 15px; text-align: left; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="deleteBitlyCheckboxBatch" style="width: auto; cursor: pointer;">
+                                <span>Also delete <strong>${withBitlyLinks.length}</strong> Bitly short link${withBitlyLinks.length > 1 ? 's' : ''}</span>
+                            </label>
+                        </div>
+                    `,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Delete',
+                    cancelButtonText: 'Cancel',
+                    preConfirm: () => {
+                        deleteBitly = document.getElementById('deleteBitlyCheckboxBatch').checked;
+                    }
+                });
+                
+                if (!result.isConfirmed) return;
+            } else {
+                if (!await showConfirm(`Are you sure you want to delete ${selectedIndices.size} selected link${selectedIndices.size > 1 ? 's' : ''}?`, 'Delete Selected Links')) {
+                    return;
+                }
+            }
+            
+            // Delete from Bitly if requested
+            if (deleteBitly && withBitlyLinks.length > 0) {
+                Swal.fire({
+                    title: 'Deleting from Bitly...',
+                    html: `Progress: <strong>0</strong>/${withBitlyLinks.length}`,
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                let bitlyDeletedCount = 0;
+                let bitlyFailedCount = 0;
+                
+                for (let i = 0; i < withBitlyLinks.length; i++) {
+                    Swal.update({
+                        html: `Progress: <strong>${i + 1}</strong>/${withBitlyLinks.length}`
+                    });
+                    
+                    const result = await deleteBitlyShortLink(withBitlyLinks[i].shortLink);
+                    if (result.success) {
+                        bitlyDeletedCount++;
+                    } else {
+                        bitlyFailedCount++;
+                    }
+                    
+                    if (i < withBitlyLinks.length - 1) {
+                        await sleep(400);
+                    }
+                }
+                
+                Swal.close();
+                
+                if (bitlyFailedCount > 0) {
+                    showWarning(`${bitlyDeletedCount} deleted from Bitly, ${bitlyFailedCount} failed`, 'Partial Bitly Delete');
+                }
+            }
+            
+            // Delete from local storage
+            const indicesToDelete = Array.from(selectedIndices).sort((a, b) => b - a);
+            indicesToDelete.forEach(index => links.splice(index, 1));
+            selectedIndices.clear();
+            saveLinks();
+            updateTable();
+            updateStats();
+            
+            if (deleteBitly && withBitlyLinks.length > 0) {
+                showSuccess(`${indicesToDelete.length} link${indicesToDelete.length > 1 ? 's' : ''} deleted from manager and Bitly`);
+            } else {
                 showSuccess(`${indicesToDelete.length} link${indicesToDelete.length > 1 ? 's' : ''} deleted successfully`);
             }
         }
@@ -1379,36 +1607,156 @@
             localStorage.setItem('comfyui_utm_links', JSON.stringify(links));
         }
 
-        function showBitlyPanel() {
+        async function showBitlyPanel() {
+            // Check if encryption is enabled first
+            if (!isEncryptionEnabled()) {
+                await setupEncryptionDialog();
+                if (!isEncryptionEnabled()) {
+                    // User cancelled encryption setup
+                    return;
+                }
+            }
+            
             const panel = document.getElementById('bitlyPanel');
+            
+            // Check if encryption is enabled but not unlocked
+            if (isEncryptionEnabled() && !getEncryptionPassword()) {
+                // Show locked state
+                panel.innerHTML = `
+                    <h4>⚙️ Bitly Setup</h4>
+                    <div class="alert alert-warning" style="margin-bottom: 15px;">
+                        🔒 <strong>Content Hidden:</strong> Your Bitly credentials are encrypted. Please unlock to view and edit.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-small" onclick="unlockAndReloadBitlyPanel()">🔓 Unlock</button>
+                        <button class="btn btn-small btn-secondary" onclick="hideBitlyPanel()">Close</button>
+                    </div>
+                `;
+            } else {
+                // Load normal panel content
+                await loadBitlyPanelContent();
+            }
+            
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        async function loadBitlyPanelContent() {
+            const panel = document.getElementById('bitlyPanel');
+            panel.innerHTML = `
+                <h4>⚙️ Bitly Setup</h4>
+                <div class="help-text" style="margin-bottom: 15px; color: #856404;">
+                    Get token: <a href="https://bitly.com" target="_blank" style="color: #667eea;">bitly.com</a> → Settings → Developer Settings → API
+                </div>
+                <div class="alert alert-info" style="margin-bottom: 15px; font-size: 12px;">
+                    🔒 <strong>Encrypted & Secure:</strong> Your credentials are encrypted with AES-256 and stored locally in your browser. Your master password is never saved. Data stays on your device only.
+                </div>
+                <div class="form-group">
+                    <label for="bitlyApiToken">API Token</label>
+                    <input type="text" id="bitlyApiToken" placeholder="Paste your API token" style="margin-bottom: 10px;">
+                </div>
+                <div class="form-group">
+                    <label for="bitlyGroupId">Group ID (for analytics)</label>
+                    <input type="text" id="bitlyGroupId" placeholder="Your group ID" style="margin-bottom: 10px;">
+                    <div class="help-text" style="margin-top: 5px;">
+                        Find in Bitly dashboard URL: <code>app.bitly.com/<strong>YOUR_GROUP_ID</strong>/links/...</code>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-small" onclick="verifyAndSaveBitlyToken()">✅ Verify</button>
+                    <button class="btn btn-small btn-danger" onclick="clearBitlyToken()">🗑️ Clear</button>
+                    <button class="btn btn-small btn-warning" onclick="changeEncryptionPassword()">🔑 Change Password</button>
+                    <button class="btn btn-small btn-secondary" onclick="hideBitlyPanel()">Close</button>
+                </div>
+            `;
+            
+            await loadBitlyToken();
+        }
+        
+        async function unlockAndReloadBitlyPanel() {
+            const unlocked = await unlockEncryptionDialog();
+            if (unlocked) {
+                await loadBitlyPanelContent();
+            }
         }
 
         function hideBitlyPanel() {
             document.getElementById('bitlyPanel').style.display = 'none';
         }
 
-        function loadBitlyToken() {
-            const saved = localStorage.getItem('bitly_api_token');
-            if (saved) {
-                document.getElementById('bitlyApiToken').value = saved;
+        async function loadBitlyToken() {
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                // Load encrypted token
+                const encrypted = localStorage.getItem('bitly_api_token_encrypted');
+                if (encrypted) {
+                    const decrypted = await decryptData(encrypted, password);
+                    if (decrypted) {
+                        document.getElementById('bitlyApiToken').value = decrypted;
+                    }
+                }
+                // Load encrypted Group ID
+                const encryptedGroupId = localStorage.getItem('bitly_group_id_encrypted');
+                if (encryptedGroupId) {
+                    const decrypted = await decryptData(encryptedGroupId, password);
+                    if (decrypted) {
+                        document.getElementById('bitlyGroupId').value = decrypted;
+                    }
+                }
+            } else if (!isEncryptionEnabled()) {
+                // Load plain text token
+                const saved = localStorage.getItem('bitly_api_token');
+                if (saved) {
+                    document.getElementById('bitlyApiToken').value = saved;
+                }
+                // Load plain text Group ID
+                const savedGroupId = localStorage.getItem('bitly_group_id');
+                if (savedGroupId) {
+                    document.getElementById('bitlyGroupId').value = savedGroupId;
+                }
             }
         }
 
-        function saveBitlyToken() {
+        async function saveBitlyToken() {
             const token = document.getElementById('bitlyApiToken').value.trim();
-            if (token) {
-                localStorage.setItem('bitly_api_token', token);
+            const groupId = document.getElementById('bitlyGroupId').value.trim();
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                // Save encrypted
+                if (token) {
+                    const encrypted = await encryptData(token, password);
+                    localStorage.setItem('bitly_api_token_encrypted', encrypted);
+                    localStorage.removeItem('bitly_api_token'); // Remove plain text
+                }
+                if (groupId) {
+                    const encrypted = await encryptData(groupId, password);
+                    localStorage.setItem('bitly_group_id_encrypted', encrypted);
+                    localStorage.removeItem('bitly_group_id'); // Remove plain text
+                }
+            } else {
+                // Save plain text
+                if (token) {
+                    localStorage.setItem('bitly_api_token', token);
+                }
+                if (groupId) {
+                    localStorage.setItem('bitly_group_id', groupId);
+                }
             }
         }
 
         async function clearBitlyToken() {
-            if (await showConfirm('Remove saved Bitly token? You will need to re-enter it next time.', 'Clear Token')) {
+            if (await showConfirm('Remove saved Bitly credentials? You will need to re-enter them next time.', 'Clear Bitly Setup')) {
                 localStorage.removeItem('bitly_api_token');
+                localStorage.removeItem('bitly_api_token_encrypted');
+                localStorage.removeItem('bitly_group_id');
+                localStorage.removeItem('bitly_group_id_encrypted');
                 document.getElementById('bitlyApiToken').value = '';
+                document.getElementById('bitlyGroupId').value = '';
                 bitlyTokenValid = false;
                 updateTokenStatus(false, 'No Token');
-                showSuccess('Token cleared successfully!');
+                showSuccess('Bitly credentials cleared successfully!');
             }
         }
 
@@ -1460,7 +1808,17 @@
         }
 
         async function createBitlyForSelected() {
-            const apiToken = localStorage.getItem('bitly_api_token');
+            let apiToken = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encrypted = localStorage.getItem('bitly_api_token_encrypted');
+                if (encrypted) {
+                    apiToken = await decryptData(encrypted, password);
+                }
+            } else {
+                apiToken = localStorage.getItem('bitly_api_token');
+            }
             
             if (!apiToken || !bitlyTokenValid) {
                 showWarning('Please set up and verify Bitly API token first (click "⚙️ Setup Token" button)', 'Token Required');
@@ -1717,9 +2075,1282 @@
             window.URL.revokeObjectURL(url);
         }
 
+        function downloadJSON(content, filename) {
+            const blob = new Blob([content], { type: 'application/json;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
         function sleep(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
+
+        // ========== Settings Import/Export Functions ==========
+
+        async function exportSettings() {
+            const settings = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                encryptionEnabled: isEncryptionEnabled(),
+                bitly: {
+                    apiToken: localStorage.getItem('bitly_api_token_encrypted') || localStorage.getItem('bitly_api_token') || null,
+                    groupId: localStorage.getItem('bitly_group_id_encrypted') || localStorage.getItem('bitly_group_id') || null,
+                    encrypted: !!localStorage.getItem('bitly_api_token_encrypted')
+                },
+                sheets: {
+                    apiKey: localStorage.getItem('sheets_api_key_encrypted') || localStorage.getItem('sheets_api_key') || null,
+                    sheetId: localStorage.getItem('sheets_id_encrypted') || localStorage.getItem('sheets_id') || null,
+                    sheetRange: localStorage.getItem('sheets_range_encrypted') || localStorage.getItem('sheets_range') || null,
+                    encrypted: !!localStorage.getItem('sheets_api_key_encrypted')
+                },
+                formState: localStorage.getItem('form_state') || null
+            };
+
+            const json = JSON.stringify(settings, null, 2);
+            downloadJSON(json, `utm_manager_settings_${new Date().toISOString().split('T')[0]}.json`);
+            
+            showSuccess('Settings exported successfully!<br><br>⚠️ Keep this file secure - it contains encrypted tokens.', 'Settings Exported');
+        }
+
+        function importSettings() {
+            document.getElementById('importSettingsInput').click();
+        }
+
+        async function handleImportSettings(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const settings = JSON.parse(e.target.result);
+                    
+                    if (!settings.version) {
+                        showError('Invalid settings file format', 'Import Failed');
+                        return;
+                    }
+
+                    const result = await Swal.fire({
+                        title: 'Import Settings',
+                        html: `
+                            <div style="text-align: left;">
+                                <p style="margin-bottom: 15px;">Found settings exported on: <strong>${new Date(settings.exportDate).toLocaleString()}</strong></p>
+                                <p style="margin-bottom: 10px;">This will import:</p>
+                                <ul style="padding-left: 20px;">
+                                    ${settings.bitly?.apiToken ? '<li>✅ Bitly credentials</li>' : '<li>❌ No Bitly credentials</li>'}
+                                    ${settings.sheets?.apiKey ? '<li>✅ Google Sheets credentials</li>' : '<li>❌ No Google Sheets credentials</li>'}
+                                    ${settings.formState ? '<li>✅ Form state</li>' : '<li>❌ No form state</li>'}
+                                </ul>
+                                <div class="alert alert-warning" style="margin-top: 15px; font-size: 12px;">
+                                    ⚠️ This will overwrite your current settings!
+                                </div>
+                            </div>
+                        `,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#667eea',
+                        confirmButtonText: 'Import',
+                        cancelButtonText: 'Cancel'
+                    });
+
+                    if (!result.isConfirmed) return;
+
+                    // Check if we need to enable encryption
+                    if (settings.encryptionEnabled && !isEncryptionEnabled()) {
+                        await setupEncryptionDialog();
+                        if (!isEncryptionEnabled()) {
+                            showWarning('Encryption setup cancelled. Import aborted.', 'Import Cancelled');
+                            return;
+                        }
+                    }
+
+                    // Import Bitly settings
+                    if (settings.bitly.apiToken) {
+                        if (settings.bitly.encrypted) {
+                            localStorage.setItem('bitly_api_token_encrypted', settings.bitly.apiToken);
+                        } else {
+                            localStorage.setItem('bitly_api_token', settings.bitly.apiToken);
+                        }
+                    }
+                    if (settings.bitly.groupId) {
+                        if (settings.bitly.encrypted) {
+                            localStorage.setItem('bitly_group_id_encrypted', settings.bitly.groupId);
+                        } else {
+                            localStorage.setItem('bitly_group_id', settings.bitly.groupId);
+                        }
+                    }
+
+                    // Import Google Sheets settings
+                    if (settings.sheets?.apiKey) {
+                        if (settings.sheets.encrypted) {
+                            localStorage.setItem('sheets_api_key_encrypted', settings.sheets.apiKey);
+                        } else {
+                            localStorage.setItem('sheets_api_key', settings.sheets.apiKey);
+                        }
+                    }
+                    if (settings.sheets?.sheetId) {
+                        if (settings.sheets.encrypted) {
+                            localStorage.setItem('sheets_id_encrypted', settings.sheets.sheetId);
+                        } else {
+                            localStorage.setItem('sheets_id', settings.sheets.sheetId);
+                        }
+                    }
+                    if (settings.sheets?.sheetRange) {
+                        if (settings.sheets.encrypted) {
+                            localStorage.setItem('sheets_range_encrypted', settings.sheets.sheetRange);
+                        } else {
+                            localStorage.setItem('sheets_range', settings.sheets.sheetRange);
+                        }
+                    }
+
+                    // Import form state
+                    if (settings.formState) {
+                        localStorage.setItem('form_state', settings.formState);
+                        loadFormState();
+                    }
+
+                    // Import encryption flag
+                    if (settings.encryptionEnabled) {
+                        localStorage.setItem('encryption_enabled', 'true');
+                    }
+
+                    // Reload everything
+                    await checkBitlyToken();
+                    await checkSheetsToken();
+
+                    showSuccess('Settings imported successfully!<br><br>If credentials were encrypted, you may need to unlock with your password.', 'Import Complete');
+
+                } catch (error) {
+                    showError('Failed to import settings: ' + error.message, 'Import Failed');
+                }
+            };
+            reader.readAsText(file);
+            
+            // Reset file input
+            event.target.value = '';
+        }
+
+        async function resetAllSettings() {
+            const result = await Swal.fire({
+                title: '⚠️ Reset All Settings',
+                html: `
+                    <div style="text-align: left;">
+                        <p style="margin-bottom: 15px; color: #dc3545;"><strong>This will permanently delete:</strong></p>
+                        <ul style="padding-left: 20px; color: #666;">
+                            <li>All Bitly credentials</li>
+                            <li>All Google Sheets credentials</li>
+                            <li>Encryption settings and password</li>
+                            <li>Form state (source, campaign, etc.)</li>
+                            <li>All generated links (${links.length} links)</li>
+                        </ul>
+                        <div class="alert alert-warning" style="margin-top: 15px; font-size: 13px;">
+                            ⚠️ <strong>This action cannot be undone!</strong><br>
+                            Consider exporting your settings first.
+                        </div>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                confirmButtonText: 'Yes, Reset Everything',
+                cancelButtonText: 'Cancel',
+                input: 'checkbox',
+                inputPlaceholder: 'I understand this will delete everything',
+                inputValidator: (result) => {
+                    return !result && 'You need to confirm by checking the box'
+                }
+            });
+
+            if (!result.isConfirmed) return;
+
+            // Clear all localStorage
+            localStorage.removeItem('bitly_api_token');
+            localStorage.removeItem('bitly_api_token_encrypted');
+            localStorage.removeItem('bitly_group_id');
+            localStorage.removeItem('bitly_group_id_encrypted');
+            localStorage.removeItem('sheets_api_key');
+            localStorage.removeItem('sheets_api_key_encrypted');
+            localStorage.removeItem('sheets_id');
+            localStorage.removeItem('sheets_id_encrypted');
+            localStorage.removeItem('sheets_range');
+            localStorage.removeItem('sheets_range_encrypted');
+            localStorage.removeItem('encryption_enabled');
+            localStorage.removeItem('form_state');
+            localStorage.removeItem('comfyui_utm_links');
+
+            // Clear session
+            clearEncryptionPassword();
+
+            // Reset variables
+            links = [];
+            selectedIndices.clear();
+            bitlyTokenValid = false;
+            sheetsTokenValid = false;
+
+            // Reset UI
+            updateTable();
+            updateStats();
+            updateTokenStatus(false, 'No Token');
+            updateSheetsStatus(false, 'No Token');
+
+            // Reset form
+            document.getElementById('baseUrl').value = 'https://www.comfy.org/';
+            document.getElementById('utmSource').value = '';
+            document.getElementById('utmMedium').value = '';
+            document.getElementById('utmCampaign').value = '';
+            document.getElementById('shortPrefix').value = '';
+            document.getElementById('linkNote').value = '';
+            document.getElementById('batchNames').value = '';
+
+            showSuccess('All settings and data have been reset!', 'Reset Complete');
+        }
+
+        // ========== Bitly Management Functions ==========
+
+        async function openBitlyStats(shortLink) {
+            // Get Group ID from localStorage
+            let groupId = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encrypted = localStorage.getItem('bitly_group_id_encrypted');
+                if (encrypted) {
+                    groupId = await decryptData(encrypted, password);
+                }
+            } else {
+                groupId = localStorage.getItem('bitly_group_id');
+            }
+            
+            if (!groupId) {
+                showWarning('Please set up Bitly Group ID first in Bitly Setup panel to view analytics.', 'Group ID Required');
+                showBitlyPanel();
+                return;
+            }
+            
+            // Extract the bitlink ID
+            // e.g., "https://links.comfy.org/twitter" -> "links.comfy.org/twitter"
+            const bitlinkId = shortLink.replace('https://', '').replace('http://', '');
+            
+            // Open Bitly analytics page with Group ID
+            // Format: https://app.bitly.com/{GROUP_ID}/links/{bitlink_id}/details
+            const statsUrl = `https://app.bitly.com/${groupId}/links/${bitlinkId}/details`;
+            
+            console.log('📊 Opening Bitly stats:', statsUrl);
+            window.open(statsUrl, '_blank');
+        }
+
+        async function deleteBitlyShortLink(shortLink) {
+            let apiToken = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encrypted = localStorage.getItem('bitly_api_token_encrypted');
+                if (encrypted) {
+                    apiToken = await decryptData(encrypted, password);
+                }
+            } else {
+                apiToken = localStorage.getItem('bitly_api_token');
+            }
+            
+            if (!apiToken) {
+                return { success: false, error: 'No Bitly API token' };
+            }
+            
+            // Extract bitlink ID from URL
+            // e.g., "https://links.comfy.org/twitter" -> "links.comfy.org/twitter"
+            const bitlinkId = shortLink.replace('https://', '').replace('http://', '');
+            
+            console.log('🗑️ Deleting Bitly short link:', bitlinkId);
+            
+            try {
+                const response = await fetch(`https://api-ssl.bitly.com/v4/bitlinks/${encodeURIComponent(bitlinkId)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${apiToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('📥 Bitly Delete Response Status:', response.status);
+                
+                if (response.ok || response.status === 200) {
+                    return { success: true };
+                } else {
+                    const data = await response.json();
+                    console.log('📥 Bitly Delete Error:', data);
+                    return { success: false, error: data.message || data.description || 'Unknown error' };
+                }
+            } catch (error) {
+                console.error('❌ Bitly Delete Error:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        // ========== Google Sheets Integration Functions ==========
+
+        async function showSheetsPanel() {
+            // Check if encryption is enabled first
+            if (!isEncryptionEnabled()) {
+                await setupEncryptionDialog();
+                if (!isEncryptionEnabled()) {
+                    // User cancelled encryption setup
+                    return;
+                }
+            }
+            
+            const panel = document.getElementById('sheetsPanel');
+            
+            // Check if encryption is enabled but not unlocked
+            if (isEncryptionEnabled() && !getEncryptionPassword()) {
+                // Show locked state
+                panel.innerHTML = `
+                    <h4>📊 Google Sheets Integration</h4>
+                    <div class="alert alert-warning" style="margin-bottom: 15px;">
+                        🔒 <strong>Content Hidden:</strong> Your Google Sheets credentials are encrypted. Please unlock to view and edit.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-small" onclick="unlockAndReloadSheetsPanel()">🔓 Unlock</button>
+                        <button class="btn btn-small btn-secondary" onclick="hideSheetsPanel()">Close</button>
+                    </div>
+                `;
+            } else {
+                // Load normal panel content
+                await loadSheetsPanelContent();
+            }
+            
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        async function loadSheetsPanelContent() {
+            const panel = document.getElementById('sheetsPanel');
+            panel.innerHTML = `
+                <h4>📊 Google Sheets Integration</h4>
+                <div class="help-text" style="margin-bottom: 15px; color: #856404;">
+                    Setup Guide:
+                    <ol style="margin: 10px 0; padding-left: 20px; line-height: 1.8;">
+                        <li>Go to <a href="https://console.cloud.google.com/" target="_blank" style="color: #667eea;">Google Cloud Console</a></li>
+                        <li>Create project → Enable "Google Sheets API"</li>
+                        <li>Create Credentials → API Key (restrict to Google Sheets API)</li>
+                        <li>Create a <a href="https://sheets.google.com/" target="_blank" style="color: #667eea;">Google Sheet</a> (empty sheet is fine, headers will be added automatically)</li>
+                        <li>Share your Sheet: Anyone with link → Editor (or Viewer for read-only)</li>
+                        <li>Copy Sheet ID from URL: <code>docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</code></li>
+                    </ol>
+                    <div style="background: #e7f3ff; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 12px;">
+                        💡 <strong>Auto-setup:</strong> Headers will be automatically created on first sync if your sheet is empty!
+                    </div>
+                </div>
+                <div class="alert alert-info" style="margin-bottom: 15px; font-size: 12px;">
+                    🔒 <strong>Encrypted & Secure:</strong> Your API Key is encrypted with AES-256 and stored locally in your browser. Your master password is never saved. Data stays on your device only.
+                </div>
+                <div class="form-group">
+                    <label for="sheetsApiKey">Google Sheets API Key</label>
+                    <input type="text" id="sheetsApiKey" placeholder="AIzaSyBxxxxxxxxxxxxxxxxxxxxxxx" style="margin-bottom: 10px;">
+                </div>
+                <div class="form-group">
+                    <label for="sheetsId">Sheet ID</label>
+                    <input type="text" id="sheetsId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" style="margin-bottom: 10px;">
+                    <div class="help-text" style="margin-top: 5px;">
+                        Find in URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="sheetsRange">Sheet Name (optional)</label>
+                    <input type="text" id="sheetsRange" placeholder="Sheet1" value="Sheet1" style="margin-bottom: 10px;">
+                    <div class="help-text" style="margin-top: 5px;">
+                        Default: Sheet1. Change if your sheet has a different name.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="sheetsWebAppUrl">Apps Script Web App URL (for write operations)</label>
+                    <input type="text" id="sheetsWebAppUrl" placeholder="https://script.google.com/macros/s/.../exec" style="margin-bottom: 10px;">
+                    <div class="help-text" style="margin-top: 5px;">
+                        📝 <a href="javascript:void(0)" onclick="showAppsScriptGuide()" style="color: #667eea;">Click here for setup guide</a>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-small" onclick="verifyAndSaveSheetsToken()">✅ Verify & Connect</button>
+                    <button class="btn btn-small btn-danger" onclick="clearSheetsToken()">🗑️ Clear</button>
+                    <button class="btn btn-small btn-warning" onclick="changeEncryptionPassword()">🔑 Change Password</button>
+                    <button class="btn btn-small btn-secondary" onclick="hideSheetsPanel()">Close</button>
+                </div>
+            `;
+            
+            await loadSheetsToken();
+        }
+        
+        async function unlockAndReloadSheetsPanel() {
+            const unlocked = await unlockEncryptionDialog();
+            if (unlocked) {
+                await loadSheetsPanelContent();
+            }
+        }
+
+        function hideSheetsPanel() {
+            document.getElementById('sheetsPanel').style.display = 'none';
+        }
+        
+        function showAppsScriptGuide() {
+            Swal.fire({
+                title: '📝 Google Apps Script Setup Guide',
+                html: `
+                    <div style="text-align: left; font-size: 13px; line-height: 1.6;">
+                        <p style="margin-bottom: 15px;"><strong>Step 1: Open Apps Script Editor</strong></p>
+                        <ul style="margin-bottom: 15px; padding-left: 20px;">
+                            <li>Open your Google Sheet</li>
+                            <li>Click <strong>Extensions</strong> → <strong>Apps Script</strong></li>
+                        </ul>
+                        
+                        <p style="margin-bottom: 15px;"><strong>Step 2: Paste the Code</strong></p>
+                        <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto;">
+// 🔒 CORS handler - Required for browser requests<br>
+function doOptions(e) {<br>
+&nbsp;&nbsp;return ContentService.createTextOutput('')<br>
+&nbsp;&nbsp;&nbsp;&nbsp;.setMimeType(ContentService.MimeType.JSON);<br>
+}<br>
+<br>
+function doPost(e) {<br>
+&nbsp;&nbsp;try {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();<br>
+&nbsp;&nbsp;&nbsp;&nbsp;const data = JSON.parse(e.postData.contents);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;if (data.addHeaders && data.headers) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const firstRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const isEmpty = firstRow.every(cell => cell === '');<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (isEmpty || sheet.getLastRow() === 0) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sheet.getRange(1, 1, 1, data.headers.length).setValues([data.headers]);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;if (data.values && data.values.length > 0) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;data.values.forEach(row => {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sheet.appendRow(row);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;});<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput(JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;success: true,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rowsAdded: data.values ? data.values.length : 0<br>
+&nbsp;&nbsp;&nbsp;&nbsp;})).setMimeType(ContentService.MimeType.JSON);<br>
+&nbsp;&nbsp;} catch (error) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput(JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;success: false,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;error: error.toString()<br>
+&nbsp;&nbsp;&nbsp;&nbsp;})).setMimeType(ContentService.MimeType.JSON);<br>
+&nbsp;&nbsp;}<br>
+}<br>
+<br>
+function doGet(e) {<br>
+&nbsp;&nbsp;try {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();<br>
+&nbsp;&nbsp;&nbsp;&nbsp;const data = sheet.getDataRange().getValues();<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput(JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;success: true,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;values: data<br>
+&nbsp;&nbsp;&nbsp;&nbsp;})).setMimeType(ContentService.MimeType.JSON);<br>
+&nbsp;&nbsp;} catch (error) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput(JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;success: false,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;error: error.toString()<br>
+&nbsp;&nbsp;&nbsp;&nbsp;})).setMimeType(ContentService.MimeType.JSON);<br>
+&nbsp;&nbsp;}<br>
+}
+                        </div>
+                        
+                        <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                            ⚠️ <strong>Important Tip:</strong> Make sure your code includes the <code>doOptions()</code> function to handle CORS preflight requests, or you will get CORS errors!
+                        </div>
+                        
+                        <p style="margin-bottom: 15px;"><strong>Step 3: Deploy as Web App</strong></p>
+                        <ul style="margin-bottom: 15px; padding-left: 20px;">
+                            <li>Click <strong>Deploy</strong> → <strong>New deployment</strong></li>
+                            <li>Type: <strong>Web app</strong></li>
+                            <li>Execute as: <strong>Me</strong></li>
+                            <li><strong style="color: #dc3545;">Who has access: <strong>Anyone</strong></strong> ⚠️ 必须选择此选项以避免 CORS 错误</li>
+                            <li>Click <strong>Deploy</strong></li>
+                            <li>Authorize when prompted</li>
+                        </ul>
+                        
+                        <div style="background: #d1ecf1; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px;">
+                            💡 <strong>Tip:</strong> If you encounter a CORS error, please make sure:<br>
+                            1. You have added the <code>doOptions()</code> function in your code<br>
+                            2. "Who has access" is set to <strong>"Anyone"</strong><br>
+                            3. You use the new Web App URL after redeploying
+                        </div>
+                        
+                        <p style="margin-bottom: 15px;"><strong>Step 4: Copy Web App URL</strong></p>
+                        <ul style="padding-left: 20px;">
+                            <li>Copy the URL (looks like: <code style="font-size: 10px;">https://script.google.com/macros/s/.../exec</code>)</li>
+                            <li>Paste it in the "Apps Script Web App URL" field above</li>
+                        </ul>
+                        
+                        <div style="background: #e7f3ff; padding: 10px; border-radius: 4px; margin-top: 15px;">
+                            💡 <strong>Note:</strong> You only need to do this once per sheet!
+                        </div>
+                    </div>
+                `,
+                width: '700px',
+                confirmButtonColor: '#667eea',
+                confirmButtonText: 'Got it!'
+            });
+        }
+
+        async function loadSheetsToken() {
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                // Load encrypted tokens
+                const encryptedApiKey = localStorage.getItem('sheets_api_key_encrypted');
+                const encryptedSheetId = localStorage.getItem('sheets_id_encrypted');
+                const encryptedSheetRange = localStorage.getItem('sheets_range_encrypted');
+                const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
+                
+                if (encryptedApiKey) {
+                    const decrypted = await decryptData(encryptedApiKey, password);
+                    if (decrypted) {
+                        document.getElementById('sheetsApiKey').value = decrypted;
+                    }
+                }
+                if (encryptedSheetId) {
+                    const decrypted = await decryptData(encryptedSheetId, password);
+                    if (decrypted) {
+                        document.getElementById('sheetsId').value = decrypted;
+                    }
+                }
+                if (encryptedSheetRange) {
+                    const decrypted = await decryptData(encryptedSheetRange, password);
+                    if (decrypted) {
+                        document.getElementById('sheetsRange').value = decrypted;
+                    }
+                }
+                if (encryptedWebAppUrl) {
+                    const decrypted = await decryptData(encryptedWebAppUrl, password);
+                    if (decrypted) {
+                        document.getElementById('sheetsWebAppUrl').value = decrypted;
+                    }
+                }
+            } else if (!isEncryptionEnabled()) {
+                // Load plain text tokens
+                const savedApiKey = localStorage.getItem('sheets_api_key');
+                const savedSheetId = localStorage.getItem('sheets_id');
+                const savedSheetRange = localStorage.getItem('sheets_range');
+                const savedWebAppUrl = localStorage.getItem('sheets_webapp_url');
+                if (savedApiKey) {
+                    document.getElementById('sheetsApiKey').value = savedApiKey;
+                }
+                if (savedSheetId) {
+                    document.getElementById('sheetsId').value = savedSheetId;
+                }
+                if (savedSheetRange) {
+                    document.getElementById('sheetsRange').value = savedSheetRange;
+                }
+                if (savedWebAppUrl) {
+                    document.getElementById('sheetsWebAppUrl').value = savedWebAppUrl;
+                }
+            }
+        }
+
+        async function saveSheetsToken() {
+            const apiKey = document.getElementById('sheetsApiKey').value.trim();
+            const sheetId = document.getElementById('sheetsId').value.trim();
+            const sheetRange = document.getElementById('sheetsRange').value.trim();
+            const webAppUrl = document.getElementById('sheetsWebAppUrl').value.trim();
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                // Save encrypted
+                if (apiKey) {
+                    const encrypted = await encryptData(apiKey, password);
+                    localStorage.setItem('sheets_api_key_encrypted', encrypted);
+                    localStorage.removeItem('sheets_api_key');
+                }
+                if (sheetId) {
+                    const encrypted = await encryptData(sheetId, password);
+                    localStorage.setItem('sheets_id_encrypted', encrypted);
+                    localStorage.removeItem('sheets_id');
+                }
+                if (sheetRange) {
+                    const encrypted = await encryptData(sheetRange, password);
+                    localStorage.setItem('sheets_range_encrypted', encrypted);
+                    localStorage.removeItem('sheets_range');
+                }
+                if (webAppUrl) {
+                    const encrypted = await encryptData(webAppUrl, password);
+                    localStorage.setItem('sheets_webapp_url_encrypted', encrypted);
+                    localStorage.removeItem('sheets_webapp_url');
+                }
+            } else {
+                // Save plain text
+                if (apiKey) {
+                    localStorage.setItem('sheets_api_key', apiKey);
+                }
+                if (sheetId) {
+                    localStorage.setItem('sheets_id', sheetId);
+                }
+                if (sheetRange) {
+                    localStorage.setItem('sheets_range', sheetRange);
+                }
+                if (webAppUrl) {
+                    localStorage.setItem('sheets_webapp_url', webAppUrl);
+                }
+            }
+        }
+
+        async function clearSheetsToken() {
+            if (await showConfirm('Remove saved Google Sheets credentials? You will need to re-enter them next time.', 'Clear Google Sheets')) {
+                localStorage.removeItem('sheets_api_key');
+                localStorage.removeItem('sheets_api_key_encrypted');
+                localStorage.removeItem('sheets_id');
+                localStorage.removeItem('sheets_id_encrypted');
+                localStorage.removeItem('sheets_range');
+                localStorage.removeItem('sheets_range_encrypted');
+                localStorage.removeItem('sheets_webapp_url');
+                localStorage.removeItem('sheets_webapp_url_encrypted');
+                document.getElementById('sheetsApiKey').value = '';
+                document.getElementById('sheetsId').value = '';
+                document.getElementById('sheetsRange').value = 'Sheet1';
+                document.getElementById('sheetsWebAppUrl').value = '';
+                sheetsTokenValid = false;
+                updateSheetsStatus(false, 'No Token');
+                showSuccess('Google Sheets credentials cleared successfully!');
+            }
+        }
+
+        async function checkSheetsToken() {
+            let apiKey = null;
+            let sheetId = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encryptedApiKey = localStorage.getItem('sheets_api_key_encrypted');
+                const encryptedSheetId = localStorage.getItem('sheets_id_encrypted');
+                if (encryptedApiKey) {
+                    apiKey = await decryptData(encryptedApiKey, password);
+                }
+                if (encryptedSheetId) {
+                    sheetId = await decryptData(encryptedSheetId, password);
+                }
+            } else if (!isEncryptionEnabled()) {
+                apiKey = localStorage.getItem('sheets_api_key');
+                sheetId = localStorage.getItem('sheets_id');
+            }
+            
+            if (!apiKey || !sheetId) {
+                updateSheetsStatus(false, 'No Token');
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${apiKey}`);
+
+                if (response.ok) {
+                    sheetsTokenValid = true;
+                    const data = await response.json();
+                    updateSheetsStatus(true, data.properties?.title || 'Connected');
+                } else {
+                    sheetsTokenValid = false;
+                    updateSheetsStatus(false, 'Invalid');
+                }
+            } catch (error) {
+                sheetsTokenValid = false;
+                updateSheetsStatus(false, 'Error');
+            }
+        }
+
+        function updateSheetsStatus(valid, text) {
+            const setupBtn = document.getElementById('sheetsSetupBtn');
+            const syncBtn = document.getElementById('bulkSheetsBtn');
+            const importBtn = document.getElementById('bulkImportBtn');
+            
+            if (valid) {
+                setupBtn.innerHTML = '✅ Sheets';
+                setupBtn.className = 'btn btn-small btn-success';
+                syncBtn.style.display = 'inline-block';
+                importBtn.style.display = 'inline-block';
+            } else {
+                setupBtn.innerHTML = '⚠️ Sheets';
+                setupBtn.className = 'btn btn-small btn-warning';
+                syncBtn.style.display = 'none';
+                importBtn.style.display = 'none';
+            }
+            
+            updateSelectionInfo();
+        }
+
+        async function verifyAndSaveSheetsToken() {
+            const apiKey = document.getElementById('sheetsApiKey').value.trim();
+            const sheetId = document.getElementById('sheetsId').value.trim();
+            
+            if (!apiKey || !sheetId) {
+                showError('Please enter both API Key and Sheet ID', 'Missing Information');
+                return;
+            }
+
+            // Show loading
+            Swal.fire({
+                title: 'Verifying Google Sheets Connection...',
+                text: 'Please wait',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            try {
+                const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${apiKey}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    await saveSheetsToken();
+                    sheetsTokenValid = true;
+                    updateSheetsStatus(true, data.properties?.title || 'Connected');
+                    hideSheetsPanel();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Google Sheets Connected!',
+                        html: `Sheet: <strong>${data.properties?.title || 'Unnamed'}</strong><br><br>Ready to sync and import links!`,
+                        confirmButtonColor: '#667eea'
+                    });
+                } else {
+                    const errorData = await response.json();
+                    sheetsTokenValid = false;
+                    updateSheetsStatus(false, 'Invalid');
+                    showError(`Failed to connect: ${errorData.error?.message || 'Unknown error'}`, 'Verification Failed');
+                }
+            } catch (error) {
+                sheetsTokenValid = false;
+                updateSheetsStatus(false, 'Error');
+                showError('Connection error: ' + error.message, 'Connection Failed');
+            }
+        }
+
+        async function syncToSheetsSelected() {
+            let webAppUrl = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
+                if (encryptedWebAppUrl) {
+                    webAppUrl = await decryptData(encryptedWebAppUrl, password);
+                }
+            } else {
+                webAppUrl = localStorage.getItem('sheets_webapp_url');
+            }
+            
+            if (!webAppUrl || !sheetsTokenValid) {
+                showWarning('Please set up Google Sheets Web App URL first (click "📊 Google Sheets" button)', 'Sheets Setup Required');
+                showSheetsPanel();
+                return;
+            }
+
+            const selectedLinks = Array.from(selectedIndices).map(i => ({ ...links[i], originalIndex: i }));
+
+            if (selectedLinks.length === 0) {
+                showInfo('Please select links to sync', 'No Links Selected');
+                return;
+            }
+
+            if (!await showConfirm(`Sync ${selectedLinks.length} link${selectedLinks.length > 1 ? 's' : ''} to Google Sheets?<br><br>This will append to your sheet with timestamp.`, 'Sync to Google Sheets')) {
+                return;
+            }
+
+            // Show progress
+            Swal.fire({
+                title: 'Syncing to Google Sheets...',
+                html: `Syncing ${selectedLinks.length} link${selectedLinks.length > 1 ? 's' : ''}...`,
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            try {
+                const syncTime = new Date().toLocaleString('en-US', { 
+                    timeZone: 'UTC',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+                
+                const headers = [
+                    'Source', 'Medium', 'Campaign', 'Content', 'Base URL', 
+                    'Full URL', 'Short Alias', 'Short Link', 'Note', 'Status', 
+                    'Created At', 'Synced At'
+                ];
+                
+                const values = selectedLinks.map(link => [
+                    link.source,
+                    link.medium || '',
+                    link.campaign || '',
+                    link.content || '',
+                    link.baseUrl,
+                    link.fullUrl,
+                    link.shortAlias || '',
+                    link.shortLink || '',
+                    link.note || '',
+                    link.shortLink ? 'Created' : 'Pending',
+                    link.createdAt,
+                    syncTime
+                ]);
+
+                const response = await fetch(webAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        addHeaders: true,
+                        headers: headers,
+                        values: values
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Mark links as synced
+                    selectedLinks.forEach(link => {
+                        links[link.originalIndex].lastSyncedAt = syncTime;
+                        links[link.originalIndex].sheetsSynced = true;
+                    });
+                    saveLinks();
+                    
+                    selectedIndices.clear();
+                    updateTable();
+                    
+                    let message = `Successfully synced <strong>${selectedLinks.length}</strong> link${selectedLinks.length > 1 ? 's' : ''} to Google Sheets!<br><br>`;
+                    message += `Synced at: ${syncTime}`;
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Sync Complete!',
+                        html: message,
+                        confirmButtonColor: '#667eea'
+                    });
+                } else {
+                    showError(`Failed to sync: ${data.error || 'Unknown error'}`, 'Sync Failed');
+                }
+            } catch (error) {
+                Swal.close();
+                
+                // Check for CORS errors
+                const errorMessage = error.message.toLowerCase();
+                if (errorMessage.includes('cors') || errorMessage.includes('access-control') || errorMessage.includes('preflight')) {
+                    showError(
+                        `CORS Error: Cannot connect to Google Apps Script Web App.<br><br>
+                        <strong>Solutions:</strong><br>
+                        1. Make sure you added the <code>doOptions()</code> function to your Apps Script code<br>
+                        2. Check deployment settings: "Who has access" must be set to <strong>"Anyone"</strong><br>
+                        3. Redeploy the Web App and copy the new URL<br><br>
+                        Click "📊 Google Sheets" button to view the complete setup guide.`,
+                        'CORS Error'
+                    );
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_FAILED')) {
+                    showError(
+                        `Network Connection Failed: Cannot access Google Apps Script.<br><br>
+                        <strong>Possible Causes:</strong><br>
+                        1. Web App URL is incorrect<br>
+                        2. Apps Script is not properly deployed<br>
+                        3. Network connection issue<br><br>
+                        Please verify the Web App URL is correct.`,
+                        'Connection Failed'
+                    );
+                } else {
+                    showError('Sync error: ' + error.message, 'Sync Failed');
+                }
+            }
+        }
+
+        async function importFromSheets() {
+            let webAppUrl = null;
+            const password = getEncryptionPassword();
+            
+            if (isEncryptionEnabled() && password) {
+                const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
+                if (encryptedWebAppUrl) {
+                    webAppUrl = await decryptData(encryptedWebAppUrl, password);
+                }
+            } else {
+                webAppUrl = localStorage.getItem('sheets_webapp_url');
+            }
+            
+            if (!webAppUrl || !sheetsTokenValid) {
+                showWarning('Please set up Google Sheets Web App URL first', 'Sheets Setup Required');
+                showSheetsPanel();
+                return;
+            }
+
+            if (!await showConfirm('Import links from Google Sheets?<br><br>This will add all rows from the sheet to your local links.', 'Import from Google Sheets')) {
+                return;
+            }
+
+            // Show progress
+            Swal.fire({
+                title: 'Importing from Google Sheets...',
+                html: 'Reading data...',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            try {
+                const response = await fetch(webAppUrl);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success && data.values && data.values.length > 0) {
+                    let importedCount = 0;
+                    let skippedCount = 0;
+                    
+                    // Check if first row looks like a header
+                    const firstRow = data.values[0];
+                    let startRow = 0;
+                    
+                    // Simple header detection: if first row contains common header words
+                    const headerKeywords = ['source', 'medium', 'campaign', 'url', 'link', 'alias', 'note', 'status'];
+                    const firstRowText = firstRow.join('').toLowerCase();
+                    const isHeader = headerKeywords.some(keyword => firstRowText.includes(keyword));
+                    
+                    if (isHeader) {
+                        startRow = 1; // Skip header row
+                        console.log('Header row detected, skipping first row');
+                    }
+                    
+                    Swal.update({ html: `Processing ${data.values.length - startRow} rows...` });
+                    
+                    for (let i = startRow; i < data.values.length; i++) {
+                        const row = data.values[i];
+                        
+                        // Skip empty rows
+                        if (!row || row.length === 0 || !row[0]) {
+                            skippedCount++;
+                            continue;
+                        }
+                        
+                        // Minimum requirement: source and either baseUrl or fullUrl
+                        if (row.length >= 2 && row[0] && (row[4] || row[5])) {
+                            const link = {
+                                id: Date.now() + Math.random(),
+                                source: row[0] || '',
+                                medium: row[1] || '',
+                                campaign: row[2] || '',
+                                content: row[3] || '',
+                                baseUrl: row[4] || '',
+                                fullUrl: row[5] || '',
+                                shortAlias: row[6] || '',
+                                shortLink: row[7] || '',
+                                note: row[8] || '',
+                                status: row[9] || 'pending',
+                                createdAt: row[10] || new Date().toISOString(),
+                                lastSyncedAt: row[11] || null,
+                                sheetsSynced: true
+                            };
+                            
+                            // Check for duplicates
+                            const isDuplicate = links.some(l => l.fullUrl === link.fullUrl);
+                            if (!isDuplicate) {
+                                links.push(link);
+                                importedCount++;
+                            } else {
+                                skippedCount++;
+                            }
+                        } else {
+                            skippedCount++;
+                        }
+                    }
+                    
+                    saveLinks();
+                    updateTable();
+                    updateStats();
+                    
+                    let message = `Successfully imported <strong>${importedCount}</strong> link${importedCount > 1 ? 's' : ''}!`;
+                    if (skippedCount > 0) {
+                        message += `<br><br>Skipped: ${skippedCount} row${skippedCount > 1 ? 's' : ''} (empty or duplicate)`;
+                    }
+                    if (isHeader) {
+                        message += `<br><br>📋 Header row was automatically detected and skipped`;
+                    }
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Import Complete!',
+                        html: message,
+                        confirmButtonColor: '#667eea'
+                    });
+                } else {
+                    showError('No data found in the sheet', 'Import Failed');
+                }
+            } catch (error) {
+                Swal.close();
+                
+                // Check for CORS errors
+                const errorMessage = error.message.toLowerCase();
+                if (errorMessage.includes('cors') || errorMessage.includes('access-control') || errorMessage.includes('preflight')) {
+                    showError(
+                        `CORS Error: Cannot connect to Google Apps Script Web App.<br><br>
+                        <strong>Solutions:</strong><br>
+                        1. Make sure you added the <code>doOptions()</code> function to your Apps Script code<br>
+                        2. Check deployment settings: "Who has access" must be set to <strong>"Anyone"</strong><br>
+                        3. Redeploy the Web App and copy the new URL<br><br>
+                        Click "📊 Google Sheets" button to view the complete setup guide.`,
+                        'CORS Error'
+                    );
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_FAILED')) {
+                    showError(
+                        `Network Connection Failed: Cannot access Google Apps Script.<br><br>
+                        <strong>Possible Causes:</strong><br>
+                        1. Web App URL is incorrect<br>
+                        2. Apps Script is not properly deployed<br>
+                        3. Network connection issue<br><br>
+                        Please verify the Web App URL is correct.`,
+                        'Connection Failed'
+                    );
+                } else {
+                    showError('Import error: ' + error.message, 'Import Failed');
+                }
+            }
+        }
+
+        // ========== Encryption Management Functions ==========
+
+        async function setupEncryptionDialog() {
+            const result = await Swal.fire({
+                title: '🔒 Security Setup',
+                html: `
+                    <p style="margin-bottom: 20px; color: #666;">Create a master password to encrypt your API tokens</p>
+                    <input type="password" id="swal-setup-password" class="swal2-input" placeholder="Master password (min 8 chars)">
+                    <input type="password" id="swal-setup-password-confirm" class="swal2-input" placeholder="Confirm password">
+                    <div style="margin-top: 15px; padding: 10px; background: #f0f7ff; border-radius: 4px; font-size: 13px; text-align: left;">
+                        🔒 <strong>Encrypted & Secure:</strong><br>
+                        • Password never saved (session only)<br>
+                        • Auto-lock when tab closes<br>
+                        • AES-256 encryption
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonColor: '#667eea',
+                confirmButtonText: '🔒 Enable Encryption',
+                cancelButtonText: 'Cancel',
+                allowOutsideClick: false,
+                preConfirm: () => {
+                    const password = document.getElementById('swal-setup-password').value;
+                    const passwordConfirm = document.getElementById('swal-setup-password-confirm').value;
+                    
+                    if (!password || password.length < 8) {
+                        Swal.showValidationMessage('Password must be at least 8 characters');
+                        return false;
+                    }
+                    
+                    if (password !== passwordConfirm) {
+                        Swal.showValidationMessage('Passwords do not match');
+                        return false;
+                    }
+                    
+                    return { password };
+                }
+            });
+            
+            if (!result.isConfirmed) return;
+            
+            const { password } = result.value;
+            
+            try {
+                // Enable encryption flag
+                localStorage.setItem('encryption_enabled', 'true');
+                
+                // Store password in session
+                setEncryptionPassword(password);
+                
+                showSuccess('Encryption enabled! Your tokens will be protected.', 'Encryption Enabled');
+                
+                return true;
+                
+            } catch (error) {
+                showError('Failed to enable encryption: ' + error.message, 'Encryption Error');
+                return false;
+            }
+        }
+
+        async function unlockEncryptionDialog() {
+            const result = await Swal.fire({
+                title: '🔒 Unlock',
+                html: `
+                    <p style="margin-bottom: 15px; color: #666;">Enter your master password to access encrypted credentials</p>
+                    <input type="password" id="swal-unlock-password" class="swal2-input" placeholder="Master password">
+                `,
+                showCancelButton: true,
+                confirmButtonColor: '#667eea',
+                confirmButtonText: '🔓 Unlock',
+                cancelButtonText: 'Cancel',
+                preConfirm: () => {
+                    const password = document.getElementById('swal-unlock-password').value;
+                    
+                    if (!password) {
+                        Swal.showValidationMessage('Please enter your password');
+                        return false;
+                    }
+                    
+                    return { password };
+                }
+            });
+            
+            if (!result.isConfirmed) return false;
+            
+            const { password } = result.value;
+            
+            // Try to decrypt a test token to verify password
+            const testToken = localStorage.getItem('bitly_api_token_encrypted') || 
+                             localStorage.getItem('notion_api_token_encrypted');
+            
+            if (testToken) {
+                const decrypted = await decryptData(testToken, password);
+                if (!decrypted) {
+                    showError('Incorrect password', 'Authentication Failed');
+                    return false;
+                }
+            }
+            
+            // Password is correct
+            setEncryptionPassword(password);
+            
+            showSuccess('Unlocked! You can now use your tokens.', 'Unlocked');
+            
+                // Reload tokens
+                await loadBitlyToken();
+                await loadSheetsToken();
+                await checkBitlyToken();
+                await checkSheetsToken();
+            
+            return true;
+        }
+
+        async function changeEncryptionPassword() {
+            const result = await Swal.fire({
+                title: 'Change Master Password',
+                html: `
+                    <input type="password" id="swal-old-password" class="swal2-input" placeholder="Current password">
+                    <input type="password" id="swal-new-password" class="swal2-input" placeholder="New password (min 8 chars)">
+                    <input type="password" id="swal-new-password-confirm" class="swal2-input" placeholder="Confirm new password">
+                `,
+                showCancelButton: true,
+                confirmButtonColor: '#667eea',
+                confirmButtonText: 'Change Password',
+                preConfirm: () => {
+                    const oldPassword = document.getElementById('swal-old-password').value;
+                    const newPassword = document.getElementById('swal-new-password').value;
+                    const newPasswordConfirm = document.getElementById('swal-new-password-confirm').value;
+                    
+                    if (!oldPassword || !newPassword || !newPasswordConfirm) {
+                        Swal.showValidationMessage('All fields are required');
+                        return false;
+                    }
+                    
+                    if (newPassword.length < 8) {
+                        Swal.showValidationMessage('New password must be at least 8 characters');
+                        return false;
+                    }
+                    
+                    if (newPassword !== newPasswordConfirm) {
+                        Swal.showValidationMessage('New passwords do not match');
+                        return false;
+                    }
+                    
+                    return { oldPassword, newPassword };
+                }
+            });
+            
+            if (!result.isConfirmed) return;
+            
+            const { oldPassword, newPassword } = result.value;
+            
+            try {
+                // Verify old password
+                const testToken = localStorage.getItem('bitly_api_token_encrypted') || 
+                                 localStorage.getItem('notion_api_token_encrypted');
+                
+                if (testToken) {
+                    const decrypted = await decryptData(testToken, oldPassword);
+                    if (!decrypted) {
+                        showError('Current password is incorrect', 'Authentication Failed');
+                        return;
+                    }
+                }
+                
+                // Re-encrypt with new password
+                const bitlyTokenEnc = localStorage.getItem('bitly_api_token_encrypted');
+                const bitlyGroupIdEnc = localStorage.getItem('bitly_group_id_encrypted');
+                const notionTokenEnc = localStorage.getItem('notion_api_token_encrypted');
+                const notionDbIdEnc = localStorage.getItem('notion_database_id_encrypted');
+                
+                if (bitlyTokenEnc) {
+                    const decrypted = await decryptData(bitlyTokenEnc, oldPassword);
+                    if (decrypted) {
+                        const reencrypted = await encryptData(decrypted, newPassword);
+                        localStorage.setItem('bitly_api_token_encrypted', reencrypted);
+                    }
+                }
+                
+                if (bitlyGroupIdEnc) {
+                    const decrypted = await decryptData(bitlyGroupIdEnc, oldPassword);
+                    if (decrypted) {
+                        const reencrypted = await encryptData(decrypted, newPassword);
+                        localStorage.setItem('bitly_group_id_encrypted', reencrypted);
+                    }
+                }
+                
+                if (notionTokenEnc) {
+                    const decrypted = await decryptData(notionTokenEnc, oldPassword);
+                    if (decrypted) {
+                        const reencrypted = await encryptData(decrypted, newPassword);
+                        localStorage.setItem('notion_api_token_encrypted', reencrypted);
+                    }
+                }
+                
+                if (notionDbIdEnc) {
+                    const decrypted = await decryptData(notionDbIdEnc, oldPassword);
+                    if (decrypted) {
+                        const reencrypted = await encryptData(decrypted, newPassword);
+                        localStorage.setItem('notion_database_id_encrypted', reencrypted);
+                    }
+                }
+                
+                // Update session password
+                setEncryptionPassword(newPassword);
+                
+                showSuccess('Master password changed successfully!', 'Password Changed');
+                
+            } catch (error) {
+                showError('Failed to change password: ' + error.message, 'Error');
+            }
+        }
+
+        // Initialize encryption check on load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if encryption is enabled but not unlocked
+            if (isEncryptionEnabled() && !getEncryptionPassword()) {
+                // Prompt user to unlock
+                setTimeout(() => {
+                    unlockEncryptionDialog();
+                }, 500);
+            }
+        });
     </script>
 </body>
 </html>
