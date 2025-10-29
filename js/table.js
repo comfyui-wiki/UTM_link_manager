@@ -70,7 +70,7 @@
                     <span class="mode-label">${link.useCustomAlias === true ? 'Custom' : 'Random'}</span>
                 </div>
             </td>`;
-            html += `<td>${link.shortLink ? `<a href="${link.shortLink}" target="_blank" class="short-link">${link.shortLink.replace('https://links.comfy.org/', '')}</a>` : '<span style="color: #999;">-</span>'}</td>`;
+            html += `<td>${link.shortLink ? `<a href="${link.shortLink}" target="_blank" class="short-link">${link.shortLink.replace(/^https?:\/\/[^/]+\//, '')}</a>` : '<span style="color: #999;">-</span>'}</td>`;
             html += `<td><input type="text" class="note-input" value="${utils.escapeHtml(link.note || '')}" onchange="window.table.updateNote(${index}, this.value)" placeholder="Add note"></td>`;
             html += `<td><span class="status-badge ${link.shortLink ? 'created' : 'pending'}">${link.shortLink ? 'Created' : 'Pending'}</span></td>`;
             html += `<td>

@@ -319,13 +319,19 @@
                     const sourcePrefix = shortMap[source] || source.substring(0, 4).toLowerCase();
                     
                     if (name && shortPrefix) {
-                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 30);
-                        shortAlias = `${shortPrefix}-${cleanName}`;
+                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 50);
+                        // When batching multiple sources, include source prefix to keep aliases distinct per source
+                        if (sources.length > 1) {
+                            shortAlias = `${shortPrefix}-${sourcePrefix}-${cleanName}`;
+                        } else {
+                            shortAlias = `${shortPrefix}-${cleanName}`;
+                        }
                     } else if (name) {
-                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 30);
+                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').substring(0, 50);
                         shortAlias = `${sourcePrefix}-${cleanName}`;
                     } else if (shortPrefix) {
-                        shortAlias = shortPrefix;
+                        // No name provided; when batching multiple sources, keep aliases distinct by source
+                        shortAlias = sources.length > 1 ? `${shortPrefix}-${sourcePrefix}` : shortPrefix;
                     } else {
                         shortAlias = sourcePrefix + (baseUrl.includes('download') ? '-dl' : baseUrl.includes('cloud') ? '-cloud' : '');
                     }
