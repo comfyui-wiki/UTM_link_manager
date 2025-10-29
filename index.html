@@ -286,6 +286,20 @@
                 namesSaveTimeout = setTimeout(form.saveFormState, 500);
             });
         });
+
+        // Clear encryption password when window closes/unloads
+        window.addEventListener('beforeunload', function() {
+            encryption.clearEncryptionPassword();
+        });
+
+        // Also clear on visibility change (tab hidden/closed)
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                // Optional: clear password when tab becomes hidden
+                // Uncomment if you want to lock immediately when switching tabs
+                // encryption.clearEncryptionPassword();
+            }
+        });
     </script>
 </body>
 </html>

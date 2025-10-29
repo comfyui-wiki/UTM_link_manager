@@ -97,22 +97,32 @@
         
         // Check if encryption is enabled but not unlocked
         if (encryption.isEncryptionEnabled() && !encryption.getEncryptionPassword()) {
-            // Show locked state
-            panel.innerHTML = `
-                <h4>⚙️ Bitly Setup</h4>
-                <div class="alert alert-warning" style="margin-bottom: 15px;">
-                    🔒 <strong>Content Hidden:</strong> Your Bitly credentials are encrypted. Please unlock to view and edit.
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-small" onclick="window.bitly.unlockAndReloadBitlyPanel()">🔓 Unlock</button>
-                    <button class="btn btn-small btn-secondary" onclick="window.bitly.hideBitlyPanel()">Close</button>
-                </div>
-            `;
-        } else {
-            // Load normal panel content
-            await loadBitlyPanelContent();
+            // Auto-unlock: prompt user to unlock before showing panel
+            if (window.encryptionDialog && window.encryptionDialog.unlockEncryptionDialog) {
+                const unlocked = await window.encryptionDialog.unlockEncryptionDialog();
+                if (!unlocked) {
+                    // User cancelled unlock, don't show panel
+                    return;
+                }
+            } else {
+                // Fallback: show locked state
+                panel.innerHTML = `
+                    <h4>⚙️ Bitly Setup</h4>
+                    <div class="alert alert-warning" style="margin-bottom: 15px;">
+                        🔒 <strong>Content Hidden:</strong> Your Bitly credentials are encrypted. Please unlock to view and edit.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-small" onclick="window.bitly.unlockAndReloadBitlyPanel()">🔓 Unlock</button>
+                        <button class="btn btn-small btn-secondary" onclick="window.bitly.hideBitlyPanel()">Close</button>
+                    </div>
+                `;
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                return;
+            }
         }
         
+        // Load normal panel content
+        await loadBitlyPanelContent();
         panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     }
     
