@@ -2446,12 +2446,24 @@
                 <div class="alert alert-info" style="margin-bottom: 15px; font-size: 12px;">
                     🔒 <strong>Encrypted & Secure:</strong> Your API Key is encrypted with AES-256 and stored locally in your browser. Your master password is never saved. Data stays on your device only.
                 </div>
+                
+                <div style="background: #e7f3ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                    <strong style="color: #667eea;">💡 Two Setup Methods:</strong><br><br>
+                    <strong>Method 1: Google Sheets API (✅ Recommended for Organization Accounts)</strong><br>
+                    Only need: <strong>API Key + Sheet ID</strong> - No Web App needed, no CORS issues!<br><br>
+                    <strong>Method 2: Apps Script Web App</strong><br>
+                    Use if you have a personal Google account and can set "Anyone" access.
+                </div>
+                
                 <div class="form-group">
-                    <label for="sheetsApiKey">Google Sheets API Key</label>
+                    <label for="sheetsApiKey">Google Sheets API Key <span style="color: #667eea;">(Required for API Method)</span></label>
                     <input type="text" id="sheetsApiKey" placeholder="AIzaSyBxxxxxxxxxxxxxxxxxxxxxxx" style="margin-bottom: 10px;">
+                    <div class="help-text" style="margin-top: 5px;">
+                        Get from: <a href="https://console.cloud.google.com/" target="_blank" style="color: #667eea;">Google Cloud Console</a> → Your Project → Credentials → Create API Key
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label for="sheetsId">Sheet ID</label>
+                    <label for="sheetsId">Sheet ID <span style="color: #667eea;">(Required)</span></label>
                     <input type="text" id="sheetsId" placeholder="xxxxx" style="margin-bottom: 10px;">
                     <div class="help-text" style="margin-top: 5px;">
                         Find in URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit
@@ -2465,10 +2477,10 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="sheetsWebAppUrl">Apps Script Web App URL (for write operations)</label>
+                    <label for="sheetsWebAppUrl">Apps Script Web App URL <span style="color: #999;">(Optional - Only if using Web App method)</span></label>
                     <input type="text" id="sheetsWebAppUrl" placeholder="https://script.google.com/macros/s/.../exec" style="margin-bottom: 10px;">
                     <div class="help-text" style="margin-top: 5px;">
-                        📝 <a href="javascript:void(0)" onclick="showAppsScriptGuide()" style="color: #667eea;">Click here for setup guide</a>
+                        📝 <a href="javascript:void(0)" onclick="showAppsScriptGuide()" style="color: #667eea;">Click here for setup guide</a> (Only needed if NOT using API method)
                     </div>
                 </div>
                 
@@ -2508,6 +2520,7 @@
                         <p style="margin-bottom: 15px;"><strong>Step 2: Paste the Code</strong></p>
                         <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto;">
 // 🔒 CORS handler - Required for browser requests<br>
+// This handles the preflight OPTIONS request from browsers<br>
 function doOptions(e) {<br>
 &nbsp;&nbsp;return ContentService.createTextOutput('')<br>
 &nbsp;&nbsp;&nbsp;&nbsp;.setMimeType(ContentService.MimeType.JSON);<br>
@@ -2572,16 +2585,26 @@ function doGet(e) {<br>
                             <li>Click <strong>Deploy</strong> → <strong>New deployment</strong></li>
                             <li>Type: <strong>Web app</strong></li>
                             <li>Execute as: <strong>Me</strong></li>
-                            <li><strong style="color: #dc3545;">Who has access: <strong>Anyone</strong></strong> ⚠️ 必须选择此选项以避免 CORS 错误</li>
+                            <li><strong style="color: #dc3545;">Who has access: <strong>"Anyone"</strong></strong> ⚠️ MUST select this or CORS will fail</li>
                             <li>Click <strong>Deploy</strong></li>
                             <li>Authorize when prompted</li>
                         </ul>
                         
-                        <div style="background: #d1ecf1; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px;">
-                            💡 <strong>Tip:</strong> If you encounter a CORS error, please make sure:<br>
-                            1. You have added the <code>doOptions()</code> function in your code<br>
-                            2. "Who has access" is set to <strong>"Anyone"</strong><br>
-                            3. You use the new Web App URL after redeploying
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                            <strong style="color: #856404;">⚠️ CORS Error Troubleshooting:</strong><br><br>
+                            <strong>If you still get CORS error after setup:</strong><br>
+                            <ol style="margin: 10px 0; padding-left: 20px; line-height: 1.8;">
+                                <li><strong>Verify code is saved:</strong> Click "Save" (Ctrl+S) in Apps Script editor</li>
+                                <li><strong>Check deployment:</strong> Click "Deploy" → "Manage deployments" → Edit your deployment</li>
+                                <li><strong>Critical:</strong> "Who has access" MUST be <strong>"Anyone"</strong> (not "Only me")</li>
+                                <li><strong>Redeploy:</strong> After changing settings, click "Deploy" → "New deployment" (NOT edit existing)</li>
+                                <li><strong>Get NEW URL:</strong> Copy the NEW Web App URL (each deployment has unique URL)</li>
+                                <li><strong>Update URL:</strong> Paste the new URL in this tool's "Apps Script Web App URL" field</li>
+                                <li><strong>Test directly:</strong> Open the URL in a new browser tab - should show JSON or error message</li>
+                            </ol>
+                            <div style="background: #ffeaa7; padding: 8px; border-radius: 4px; margin-top: 10px; font-size: 11px;">
+                                <strong>💡 Common Issue:</strong> If you EDIT an existing deployment and change "Who has access" to "Anyone", you MUST create a NEW deployment for the change to take effect!
+                            </div>
                         </div>
                         
                         <p style="margin-bottom: 15px;"><strong>Step 4: Copy Web App URL</strong></p>
@@ -2787,8 +2810,9 @@ function doGet(e) {<br>
             const apiKey = document.getElementById('sheetsApiKey').value.trim();
             const sheetId = document.getElementById('sheetsId').value.trim();
             
+            // API Key and Sheet ID are required (can work without Web App for organization accounts)
             if (!apiKey || !sheetId) {
-                showError('Please enter both API Key and Sheet ID', 'Missing Information');
+                showError('Please enter both API Key and Sheet ID. Web App URL is optional.', 'Missing Information');
                 return;
             }
 
@@ -2830,21 +2854,131 @@ function doGet(e) {<br>
             }
         }
 
+        // Sync via Google Sheets API (works with organization accounts)
+        async function syncViaSheetsAPI(apiKey, sheetId, sheetRange, headers, values) {
+            try {
+                // First, check if headers exist, if not, add them
+                const rangeForHeaders = `${sheetRange}!A1:M1`;
+                const checkHeadersResponse = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(rangeForHeaders)}?key=${apiKey}`
+                );
+                
+                const checkData = await checkHeadersResponse.json();
+                let hasHeaders = false;
+                
+                if (checkHeadersResponse.ok && checkData.values && checkData.values.length > 0 && checkData.values[0].length > 0) {
+                    hasHeaders = true;
+                }
+                
+                // If no headers, add them first
+                if (!hasHeaders) {
+                    const appendHeadersResponse = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(rangeForHeaders)}?valueInputOption=RAW&key=${apiKey}`,
+                        {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                values: [headers],
+                                majorDimension: 'ROWS'
+                            })
+                        }
+                    );
+                    
+                    if (!appendHeadersResponse.ok) {
+                        const errorData = await appendHeadersResponse.json();
+                        return { success: false, error: errorData.error?.message || 'Failed to add headers' };
+                    }
+                }
+                
+                // Append data
+                const appendRange = `${sheetRange}!A:Z`;
+                const appendResponse = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(appendRange)}:append?valueInputOption=RAW&key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            values: values
+                        })
+                    }
+                );
+                
+                if (!appendResponse.ok) {
+                    const errorData = await appendResponse.json();
+                    return { success: false, error: errorData.error?.message || 'Failed to append data' };
+                }
+                
+                return { success: true, rowsAdded: values.length };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        // Sync via Web App (fallback for non-organization accounts)
+        async function syncViaWebApp(webAppUrl, headers, values) {
+            try {
+                const response = await fetch(webAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        addHeaders: true,
+                        headers: headers,
+                        values: values
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
         async function syncToSheetsSelected() {
-            let webAppUrl = null;
+            // Try to use Google Sheets API first (works with organization accounts)
+            let apiKey = null;
+            let sheetId = null;
+            let sheetRange = null;
             const password = getEncryptionPassword();
             
             if (isEncryptionEnabled() && password) {
-                const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
-                if (encryptedWebAppUrl) {
-                    webAppUrl = await decryptData(encryptedWebAppUrl, password);
-                }
+                const encryptedApiKey = localStorage.getItem('sheets_api_key_encrypted');
+                const encryptedSheetId = localStorage.getItem('sheets_id_encrypted');
+                const encryptedSheetRange = localStorage.getItem('sheets_range_encrypted');
+                if (encryptedApiKey) apiKey = await decryptData(encryptedApiKey, password);
+                if (encryptedSheetId) sheetId = await decryptData(encryptedSheetId, password);
+                if (encryptedSheetRange) sheetRange = await decryptData(encryptedSheetRange, password);
             } else {
-                webAppUrl = localStorage.getItem('sheets_webapp_url');
+                apiKey = localStorage.getItem('sheets_api_key');
+                sheetId = localStorage.getItem('sheets_id');
+                sheetRange = localStorage.getItem('sheets_range');
             }
             
-            if (!webAppUrl || !sheetsTokenValid) {
-                showWarning('Please set up Google Sheets Web App URL first (click "📊 Google Sheets" button)', 'Sheets Setup Required');
+            // Fallback to Web App if API is not available
+            let webAppUrl = null;
+            if (!apiKey || !sheetId) {
+                if (isEncryptionEnabled() && password) {
+                    const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
+                    if (encryptedWebAppUrl) {
+                        webAppUrl = await decryptData(encryptedWebAppUrl, password);
+                    }
+                } else {
+                    webAppUrl = localStorage.getItem('sheets_webapp_url');
+                }
+            }
+            
+            if ((!apiKey || !sheetId) && !webAppUrl) {
+                showWarning('Please set up Google Sheets API Key and Sheet ID (or Web App URL) first (click "📊 Google Sheets" button)', 'Sheets Setup Required');
+                showSheetsPanel();
+                return;
+            }
+            
+            if (!sheetsTokenValid && !webAppUrl) {
+                showWarning('Please verify Google Sheets connection first', 'Sheets Setup Required');
                 showSheetsPanel();
                 return;
             }
@@ -2903,23 +3037,17 @@ function doGet(e) {<br>
                     syncTime
                 ]);
 
-                const response = await fetch(webAppUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        addHeaders: true,
-                        headers: headers,
-                        values: values
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                let result;
+                
+                // Use Google Sheets API if available (preferred for organization accounts)
+                if (apiKey && sheetId) {
+                    result = await syncViaSheetsAPI(apiKey, sheetId, sheetRange || 'Sheet1', headers, values);
+                } else {
+                    // Fallback to Web App
+                    result = await syncViaWebApp(webAppUrl, headers, values);
                 }
 
-                const data = await response.json();
-
-                if (data.success) {
+                if (result.success) {
                     // Mark links as synced
                     selectedLinks.forEach(link => {
                         links[link.originalIndex].lastSyncedAt = syncTime;
@@ -2940,7 +3068,7 @@ function doGet(e) {<br>
                         confirmButtonColor: '#667eea'
                     });
                 } else {
-                    showError(`Failed to sync: ${data.error || 'Unknown error'}`, 'Sync Failed');
+                    showError(`Failed to sync: ${result.error || 'Unknown error'}`, 'Sync Failed');
                 }
             } catch (error) {
                 Swal.close();
@@ -2958,13 +3086,17 @@ function doGet(e) {<br>
                         'CORS Error'
                     );
                 } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_FAILED')) {
+                    const urlCheck = webAppUrl ? `<br><strong>Your URL:</strong> <code style="font-size: 10px; word-break: break-all;">${webAppUrl.substring(0, 80)}...</code>` : '<br>⚠️ <strong>No Web App URL configured</strong>';
+                    
                     showError(
-                        `Network Connection Failed: Cannot access Google Apps Script.<br><br>
-                        <strong>Possible Causes:</strong><br>
-                        1. Web App URL is incorrect<br>
-                        2. Apps Script is not properly deployed<br>
-                        3. Network connection issue<br><br>
-                        Please verify the Web App URL is correct.`,
+                        `Network Connection Failed: Cannot access Google Apps Script.${urlCheck}<br><br>
+                        <strong>Please check:</strong><br>
+                        1. <strong>URL Format:</strong> Must end with <code>/exec</code> (not <code>/dev</code>)<br>
+                        2. <strong>URL Test:</strong> Try opening the URL directly in browser - you should see a response<br>
+                        3. <strong>Deployment:</strong> Who has access = <strong>"Anyone"</strong> (required!)<br>
+                        4. <strong>Code:</strong> Make sure <code>doOptions()</code> function is in your Apps Script<br>
+                        5. <strong>Latest URL:</strong> If you redeployed, use the NEW URL<br><br>
+                        <strong>💡 Quick Test:</strong> Copy your Web App URL and paste it in a new browser tab. If you see JSON response, the URL works.`,
                         'Connection Failed'
                     );
                 } else {
@@ -2974,20 +3106,46 @@ function doGet(e) {<br>
         }
 
         async function importFromSheets() {
-            let webAppUrl = null;
+            // Try to use Google Sheets API first (works with organization accounts)
+            let apiKey = null;
+            let sheetId = null;
+            let sheetRange = null;
             const password = getEncryptionPassword();
             
             if (isEncryptionEnabled() && password) {
-                const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
-                if (encryptedWebAppUrl) {
-                    webAppUrl = await decryptData(encryptedWebAppUrl, password);
-                }
+                const encryptedApiKey = localStorage.getItem('sheets_api_key_encrypted');
+                const encryptedSheetId = localStorage.getItem('sheets_id_encrypted');
+                const encryptedSheetRange = localStorage.getItem('sheets_range_encrypted');
+                if (encryptedApiKey) apiKey = await decryptData(encryptedApiKey, password);
+                if (encryptedSheetId) sheetId = await decryptData(encryptedSheetId, password);
+                if (encryptedSheetRange) sheetRange = await decryptData(encryptedSheetRange, password);
             } else {
-                webAppUrl = localStorage.getItem('sheets_webapp_url');
+                apiKey = localStorage.getItem('sheets_api_key');
+                sheetId = localStorage.getItem('sheets_id');
+                sheetRange = localStorage.getItem('sheets_range');
             }
             
-            if (!webAppUrl || !sheetsTokenValid) {
-                showWarning('Please set up Google Sheets Web App URL first', 'Sheets Setup Required');
+            // Fallback to Web App if API is not available
+            let webAppUrl = null;
+            if (!apiKey || !sheetId) {
+                if (isEncryptionEnabled() && password) {
+                    const encryptedWebAppUrl = localStorage.getItem('sheets_webapp_url_encrypted');
+                    if (encryptedWebAppUrl) {
+                        webAppUrl = await decryptData(encryptedWebAppUrl, password);
+                    }
+                } else {
+                    webAppUrl = localStorage.getItem('sheets_webapp_url');
+                }
+            }
+            
+            if ((!apiKey || !sheetId) && !webAppUrl) {
+                showWarning('Please set up Google Sheets API Key and Sheet ID (or Web App URL) first', 'Sheets Setup Required');
+                showSheetsPanel();
+                return;
+            }
+            
+            if (!sheetsTokenValid && !webAppUrl) {
+                showWarning('Please verify Google Sheets connection first', 'Sheets Setup Required');
                 showSheetsPanel();
                 return;
             }
@@ -3007,13 +3165,32 @@ function doGet(e) {<br>
             });
 
             try {
-                const response = await fetch(webAppUrl);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                let data;
+                
+                // Use Google Sheets API if available
+                if (apiKey && sheetId) {
+                    const range = `${sheetRange || 'Sheet1'}!A:Z`;
+                    const response = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${apiKey}`
+                    );
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const apiData = await response.json();
+                    data = {
+                        success: true,
+                        values: apiData.values || []
+                    };
+                } else {
+                    // Fallback to Web App
+                    const response = await fetch(webAppUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    data = await response.json();
                 }
-
-                const data = await response.json();
 
                 if (data.success && data.values && data.values.length > 0) {
                     let importedCount = 0;
@@ -3113,13 +3290,17 @@ function doGet(e) {<br>
                         'CORS Error'
                     );
                 } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_FAILED')) {
+                    const urlCheck = webAppUrl ? `<br><strong>Your URL:</strong> <code style="font-size: 10px; word-break: break-all;">${webAppUrl.substring(0, 80)}...</code>` : '<br>⚠️ <strong>No Web App URL configured</strong>';
+                    
                     showError(
-                        `Network Connection Failed: Cannot access Google Apps Script.<br><br>
-                        <strong>Possible Causes:</strong><br>
-                        1. Web App URL is incorrect<br>
-                        2. Apps Script is not properly deployed<br>
-                        3. Network connection issue<br><br>
-                        Please verify the Web App URL is correct.`,
+                        `Network Connection Failed: Cannot access Google Apps Script.${urlCheck}<br><br>
+                        <strong>Please check:</strong><br>
+                        1. <strong>URL Format:</strong> Must end with <code>/exec</code> (not <code>/dev</code>)<br>
+                        2. <strong>URL Test:</strong> Try opening the URL directly in browser - you should see a response<br>
+                        3. <strong>Deployment:</strong> Who has access = <strong>"Anyone"</strong> (required!)<br>
+                        4. <strong>Code:</strong> Make sure <code>doOptions()</code> function is in your Apps Script<br>
+                        5. <strong>Latest URL:</strong> If you redeployed, use the NEW URL<br><br>
+                        <strong>💡 Quick Test:</strong> Copy your Web App URL and paste it in a new browser tab. If you see JSON response, the URL works.`,
                         'Connection Failed'
                     );
                 } else {
