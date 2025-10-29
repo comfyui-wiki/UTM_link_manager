@@ -537,17 +537,40 @@
     }
 
     async function createBitlyShortLink(apiToken, link) {
+        // Extract domain from fullUrl
+        // e.g., "https://cloud.comfy.org/?utm_source=..." -> "cloud.comfy.org"
+        let domain = '';
+        try {
+            const url = new URL(link.fullUrl);
+            domain = url.hostname;
+        } catch (error) {
+            // If URL parsing fails, try to extract domain manually
+            const match = link.fullUrl.match(/https?:\/\/([^\/\?]+)/);
+            if (match) {
+                domain = match[1];
+            } else {
+                domain = 'unknown';
+            }
+        }
+        
+        // Create title: "域名 - note" or just "域名" if no note
+        let title = domain;
+        if (link.note && link.note.trim()) {
+            title = `${domain} - ${link.note.trim()}`;
+        }
+        
         const payload = {
             long_url: link.fullUrl,
-            domain: 'links.comfy.org'
+            domain: 'links.comfy.org',
+            title: title
         };
 
         // Add custom keyword only if this specific link uses custom mode AND has an alias
         if (link.useCustomAlias === true && link.shortAlias) {
             payload.keyword = link.shortAlias;  // Use 'keyword' parameter for custom aliases
-            console.log(`Creating CUSTOM short link with keyword: ${link.shortAlias}`);
+            console.log(`Creating CUSTOM short link with keyword: ${link.shortAlias}, title: ${title}`);
         } else {
-            console.log(`Creating RANDOM short link for: ${link.fullUrl}`);
+            console.log(`Creating RANDOM short link for: ${link.fullUrl}, title: ${title}`);
         }
 
         console.log('📤 Bitly API Request Payload:', JSON.stringify(payload, null, 2));
