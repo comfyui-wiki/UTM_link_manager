@@ -1,0 +1,113 @@
+// ========== Encryption Functions ==========
+
+// Generate encryption key from password
+const deriveKey = async (password) => {
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    
+    // Use PBKDF2 to derive a key from password
+    const baseKey = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        'PBKDF2',
+        false,
+        ['deriveBits', 'deriveKey']
+    );
+    
+    // Use a fixed salt (stored openly) - in production, use per-user salt
+    const salt = encoder.encode('comfyui-utm-manager-v1');
+    
+    return await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        baseKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+};
+
+// Encrypt data
+const encryptData = async (data, password) => {
+    const key = await deriveKey(password);
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    
+    // Generate random IV
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    
+    const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        dataBuffer
+    );
+    
+    // Combine IV and encrypted data
+    const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encryptedBuffer), iv.length);
+    
+    // Convert to base64 for storage
+    return btoa(String.fromCharCode(...combined));
+};
+
+// Decrypt data
+const decryptData = async (encryptedData, password) => {
+    try {
+        const key = await deriveKey(password);
+        
+        // Decode from base64
+        const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+        
+        // Extract IV and encrypted data
+        const iv = combined.slice(0, 12);
+        const data = combined.slice(12);
+        
+        const decryptedBuffer = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            data
+        );
+        
+        const decoder = new TextDecoder();
+        return decoder.decode(decryptedBuffer);
+    } catch (error) {
+        console.error('Decryption failed:', error);
+        return null;
+    }
+};
+
+// Check if encryption is set up
+const isEncryptionEnabled = () => {
+    return localStorage.getItem('encryption_enabled') === 'true';
+};
+
+// Get cached encryption password (only in memory, never stored)
+const getEncryptionPassword = () => {
+    return sessionStorage.getItem('encryption_password');
+};
+
+// Set encryption password (only for current session)
+const setEncryptionPassword = (password) => {
+    sessionStorage.setItem('encryption_password', password);
+};
+
+// Clear encryption password
+const clearEncryptionPassword = () => {
+    sessionStorage.removeItem('encryption_password');
+};
+
+// Export encryption functions to global scope (without leaking to global)
+window.encryption = {
+    encryptData,
+    decryptData,
+    isEncryptionEnabled,
+    getEncryptionPassword,
+    setEncryptionPassword,
+    clearEncryptionPassword
+};
+
