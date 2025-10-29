@@ -328,17 +328,44 @@
 
     async function createBitlyForSelected() {
         let apiToken = null;
-        const password = encryption.getEncryptionPassword();
+        let password = encryption.getEncryptionPassword();
         const links = appState.getLinks();
         const selectedIndices = appState.getSelectedIndices();
         const bitlyTokenValid = appState.getBitlyTokenValid();
         
-        if (encryption.isEncryptionEnabled() && password) {
+        // If encryption is enabled, verify password before proceeding
+        if (encryption.isEncryptionEnabled()) {
             const encrypted = localStorage.getItem('bitly_api_token_encrypted');
             if (encrypted) {
-                apiToken = await encryption.decryptData(encrypted, password);
+                // Try to decrypt with current password (if any)
+                if (password) {
+                    apiToken = await encryption.decryptData(encrypted, password);
+                }
+                
+                // If decryption failed (wrong password or no password), ask for password
+                if (!apiToken) {
+                    // Call password verification dialog (with error handling in dialog)
+                    if (window.encryptionDialog && window.encryptionDialog.verifyPasswordWhenNeeded) {
+                        const verified = await window.encryptionDialog.verifyPasswordWhenNeeded();
+                        if (!verified) {
+                            // User cancelled password verification
+                            return;
+                        }
+                        // Get the password that was just verified and saved
+                        password = encryption.getEncryptionPassword();
+                        // Try decrypting again
+                        if (password) {
+                            apiToken = await encryption.decryptData(encrypted, password);
+                        }
+                    } else {
+                        // Fallback: show error
+                        utils.showError('Password verification is required but verification dialog is not available.', 'Verification Error');
+                        return;
+                    }
+                }
             }
         } else {
+            // No encryption, use plain token
             apiToken = localStorage.getItem('bitly_api_token');
         }
         

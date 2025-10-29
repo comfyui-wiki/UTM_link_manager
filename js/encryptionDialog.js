@@ -88,44 +88,29 @@
             title: '🔒 Unlock',
             html: `
                 <p style="margin-bottom: 15px; color: #666;">Enter your master password to access encrypted credentials</p>
-                <input type="password" id="swal-unlock-password" class="swal2-input" placeholder="Master password">
+                <input type="password" id="swal-unlock-password" class="swal2-input" placeholder="Master password" autofocus>
             `,
             showCancelButton: true,
             confirmButtonColor: '#667eea',
             confirmButtonText: '🔓 Unlock',
             cancelButtonText: 'Cancel',
+            allowOutsideClick: false,
             preConfirm: () => {
-                const password = document.getElementById('swal-unlock-password').value;
+                const password = document.getElementById('swal-unlock-password').value.trim();
                 
                 if (!password) {
                     Swal.showValidationMessage('Please enter your password');
                     return false;
                 }
                 
+                // Just save the password, don't verify here
+                // Password will be verified when actually needed (e.g., when pushing to Bitly)
+                encryption.setEncryptionPassword(password);
                 return { password };
             }
         });
         
         if (!result.isConfirmed) return false;
-        
-        const { password } = result.value;
-        
-        // Try to decrypt a test token to verify password
-        const testToken = localStorage.getItem('bitly_api_token_encrypted') || 
-                         localStorage.getItem('notion_api_token_encrypted');
-        
-        if (testToken) {
-            const decrypted = await encryption.decryptData(testToken, password);
-            if (!decrypted) {
-                utils.showError('Incorrect password', 'Authentication Failed');
-                return false;
-            }
-        }
-        
-        // Password is correct
-        encryption.setEncryptionPassword(password);
-        
-        utils.showSuccess('Unlocked! You can now use your tokens.', 'Unlocked');
         
         // Reload tokens - use window.bitly directly to ensure we get the latest reference
         if (window.bitly) {
@@ -157,7 +142,66 @@
             }
         }
         
+        utils.showSuccess('Password saved! Password will be verified when you use encrypted features.', 'Unlocked');
         return true;
+    }
+    
+    // Verify password when actually needed (called from other modules)
+    async function verifyPasswordWhenNeeded() {
+        // Use a loop to keep the dialog open on wrong password
+        let passwordVerified = false;
+        
+        while (!passwordVerified) {
+            const result = await Swal.fire({
+                title: '🔒 Password Required',
+                html: `
+                    <p style="margin-bottom: 15px; color: #666;">Enter your master password to continue</p>
+                    <input type="password" id="swal-verify-password" class="swal2-input" placeholder="Master password" autofocus>
+                `,
+                showCancelButton: true,
+                confirmButtonColor: '#667eea',
+                confirmButtonText: '🔓 Verify',
+                cancelButtonText: 'Cancel',
+                allowOutsideClick: false,
+                preConfirm: async () => {
+                    const password = document.getElementById('swal-verify-password').value.trim();
+                    
+                    if (!password) {
+                        Swal.showValidationMessage('Please enter your password');
+                        return false;
+                    }
+                    
+                    // Verify password by trying to decrypt a test token
+                    const testToken = localStorage.getItem('bitly_api_token_encrypted') || 
+                                     localStorage.getItem('notion_api_token_encrypted');
+                    
+                    if (testToken) {
+                        const decrypted = await encryption.decryptData(testToken, password);
+                        if (!decrypted) {
+                            Swal.showValidationMessage('<span style="color: #f56565;">❌ Incorrect password. Please try again.</span>');
+                            return false;
+                        }
+                    }
+                    
+                    // Password is correct - save it
+                    encryption.setEncryptionPassword(password);
+                    return { password };
+                }
+            });
+            
+            // User cancelled
+            if (!result.isConfirmed) {
+                return false;
+            }
+            
+            // Password verified successfully
+            if (result.value && result.value.password) {
+                passwordVerified = true;
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     // ========== Change Password ==========
@@ -269,22 +313,7 @@
         changeEncryptionPassword
     };
 
-    // Auto-unlock on load if needed
-    function autoUnlockIfNeeded() {
-        if (encryption.isEncryptionEnabled() && !encryption.getEncryptionPassword()) {
-            // Check if there are any encrypted tokens before prompting unlock
-            const hasEncryptedToken = localStorage.getItem('bitly_api_token_encrypted');
-            if (hasEncryptedToken) {
-                unlockEncryptionDialog();
-            }
-        }
-    }
-    
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(autoUnlockIfNeeded, 500);
-        });
-    } else {
-        setTimeout(autoUnlockIfNeeded, 500);
-    }
+    // Note: We don't auto-unlock on page load anymore.
+    // Password will only be verified when actually needed (e.g., when pushing to Bitly).
+    // Users can manually unlock by clicking the Bitly setup button if they want to view/edit settings.
 })();

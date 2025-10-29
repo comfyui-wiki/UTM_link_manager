@@ -61,14 +61,40 @@ const encryptData = async (data, password) => {
 // Decrypt data
 const decryptData = async (encryptedData, password) => {
     try {
+        if (!encryptedData || typeof encryptedData !== 'string') {
+            console.error('Decryption failed: Invalid encrypted data');
+            return null;
+        }
+        
+        if (!password || typeof password !== 'string' || password.length === 0) {
+            console.error('Decryption failed: Invalid password');
+            return null;
+        }
+        
         const key = await deriveKey(password);
         
-        // Decode from base64
-        const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+        // Validate and decode from base64
+        let combined;
+        try {
+            const base64Decoded = atob(encryptedData);
+            if (base64Decoded.length < 12) {
+                console.error('Decryption failed: Encrypted data too short (missing IV)');
+                return null;
+            }
+            combined = Uint8Array.from(base64Decoded, c => c.charCodeAt(0));
+        } catch (error) {
+            console.error('Decryption failed: Invalid base64 encoding', error);
+            return null;
+        }
         
         // Extract IV and encrypted data
         const iv = combined.slice(0, 12);
         const data = combined.slice(12);
+        
+        if (data.length === 0) {
+            console.error('Decryption failed: No encrypted data after IV');
+            return null;
+        }
         
         const decryptedBuffer = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: iv },
@@ -77,9 +103,18 @@ const decryptData = async (encryptedData, password) => {
         );
         
         const decoder = new TextDecoder();
-        return decoder.decode(decryptedBuffer);
+        const decrypted = decoder.decode(decryptedBuffer);
+        
+        // Validate decrypted data is not empty
+        if (!decrypted || decrypted.length === 0) {
+            console.error('Decryption failed: Decrypted data is empty');
+            return null;
+        }
+        
+        return decrypted;
     } catch (error) {
         console.error('Decryption failed:', error);
+        // Don't expose internal error details to prevent timing attacks
         return null;
     }
 };
