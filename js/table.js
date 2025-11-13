@@ -62,7 +62,7 @@
             html += `<td><strong>${link.source}</strong></td>`;
             html += `<td>${link.campaign}</td>`;
             html += `<td>${link.content || '-'}</td>`;
-            html += `<td><div class="link-cell">${link.fullUrl}</div></td>`;
+            html += `<td><input type="text" class="note-input" value="${utils.escapeHtml(link.fullUrl || '')}" onchange="window.table.updateFullUrl(${index}, this.value)" placeholder="Full URL" style="min-width: 350px;"></td>`;
             html += `<td><input type="text" class="note-input" value="${link.shortAlias || ''}" onchange="window.table.updateShortAliasInline(${index}, this.value)" placeholder="Enter alias"></td>`;
             html += `<td>
                 <div class="mode-indicator">
@@ -166,6 +166,37 @@
         const links = appState.getLinks();
         links[index].note = value.trim();
         appState.setLinks(links);
+    }
+
+    function updateFullUrl(index, value) {
+        const links = appState.getLinks();
+        const newFullUrl = value.trim();
+        
+        if (!newFullUrl) {
+            utils.showWarning('Full URL cannot be empty', 'Invalid URL');
+            // Restore original value
+            updateTable();
+            return;
+        }
+        
+        // Update fullUrl
+        links[index].fullUrl = newFullUrl;
+        
+        // Try to extract baseUrl from fullUrl (remove UTM parameters)
+        try {
+            const url = new URL(newFullUrl);
+            // Remove query parameters to get base URL
+            links[index].baseUrl = url.origin + url.pathname;
+        } catch (e) {
+            // If URL parsing fails, try to extract base URL manually
+            const baseMatch = newFullUrl.match(/^(https?:\/\/[^?]+)/);
+            if (baseMatch) {
+                links[index].baseUrl = baseMatch[1];
+            }
+        }
+        
+        appState.setLinks(links);
+        updateTable();
     }
 
     function toggleLinkMode(index, useCustom) {
@@ -362,6 +393,7 @@
         updateSelectionInfo,
         updateShortAliasInline,
         updateNote,
+        updateFullUrl,
         toggleLinkMode,
         copyFromTable,
         deleteLink,
