@@ -38,8 +38,11 @@
             return;
         }
 
+        // Check if all links are selected
+        const allSelected = links.length > 0 && links.length === selectedIndices.size;
+        
         let html = '<table><thead><tr>';
-        html += '<th style="width: 40px;"><input type="checkbox" onchange="window.table.toggleSelectAll(this)"></th>';
+        html += `<th style="width: 40px;"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="window.table.toggleSelectAll(this)"></th>`;
         html += '<th style="width: 100px;">Source</th>';
         html += '<th style="width: 140px;">Campaign</th>';
         html += '<th style="width: 120px;">Content</th>';
@@ -103,12 +106,17 @@
     function toggleSelectAll(checkbox) {
         const links = appState.getLinks();
         const selectedIndices = appState.getSelectedIndices();
+        
         if (checkbox.checked) {
+            // Select all
             links.forEach((_, index) => selectedIndices.add(index));
         } else {
+            // Deselect all - create a new Set to ensure state update
             selectedIndices.clear();
         }
-        appState.setSelectedIndices(selectedIndices);
+        
+        // Create a new Set to ensure state is properly updated
+        appState.setSelectedIndices(new Set(selectedIndices));
         updateTable();
     }
 
