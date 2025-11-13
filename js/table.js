@@ -44,6 +44,7 @@
         let html = '<table><thead><tr>';
         html += `<th style="width: 40px;"><input type="checkbox" ${allSelected ? 'checked' : ''} onchange="window.table.toggleSelectAll(this)"></th>`;
         html += '<th style="width: 100px;">Source</th>';
+        html += '<th style="width: 100px;">Medium</th>';
         html += '<th style="width: 140px;">Campaign</th>';
         html += '<th style="width: 120px;">Content</th>';
         html += '<th style="min-width: 350px;">Long URL</th>';
@@ -60,6 +61,7 @@
             html += `<tr class="${isSelected ? 'selected' : ''}">`;
             html += `<td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="window.table.toggleSelect(${index}, this.checked)"></td>`;
             html += `<td><strong>${link.source}</strong></td>`;
+            html += `<td>${link.medium || '-'}</td>`;
             html += `<td>${link.campaign}</td>`;
             html += `<td>${link.content || '-'}</td>`;
             html += `<td><input type="text" class="note-input" value="${utils.escapeHtml(link.fullUrl || '')}" onchange="window.table.updateFullUrl(${index}, this.value)" placeholder="Full URL" style="min-width: 350px;"></td>`;
