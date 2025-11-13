@@ -16,6 +16,37 @@
         bitly = window.bitly;
     }
 
+    // Helper function to get Bitly Group ID
+    async function getBitlyGroupId() {
+        let groupId = null;
+        const password = encryption.getEncryptionPassword();
+        
+        if (encryption.isEncryptionEnabled() && password) {
+            const encrypted = localStorage.getItem('bitly_group_id_encrypted');
+            if (encrypted) {
+                groupId = await encryption.decryptData(encrypted, password);
+            }
+        } else {
+            groupId = localStorage.getItem('bitly_group_id');
+        }
+        
+        return groupId;
+    }
+
+    // Helper function to generate Bitly analytics URL
+    function generateBitlyAnalyticsUrl(shortLink, groupId) {
+        if (!shortLink || !groupId) {
+            return '';
+        }
+        
+        // Extract the bitlink ID
+        // e.g., "https://links.comfy.org/twitter" -> "links.comfy.org/twitter"
+        const bitlinkId = shortLink.replace('https://', '').replace('http://', '');
+        
+        // Format: https://app.bitly.com/{GROUP_ID}/links/{bitlink_id}/details
+        return `https://app.bitly.com/${groupId}/links/${bitlinkId}/details`;
+    }
+
     // Wait for DOM and dependencies
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -25,7 +56,7 @@
 
     // ========== CSV Export/Import ==========
 
-    function exportToCSV() {
+    async function exportToCSV() {
         const links = appState.getLinks();
         
         if (links.length === 0) {
@@ -33,7 +64,10 @@
             return;
         }
 
-        let csv = 'Source,Medium,Campaign,Content,Base_URL,Full_URL,Short_Alias,Short_Link,Note,Status,Created_At\n';
+        // Get Bitly Group ID for analytics URLs
+        const groupId = await getBitlyGroupId();
+
+        let csv = 'Source,Medium,Campaign,Content,Base_URL,Full_URL,Short_Alias,Short_Link,Bitly_Analytics_URL,Note,Status,Created_At\n';
         
         links.forEach(link => {
             csv += `"${link.source}",`;
@@ -44,6 +78,9 @@
             csv += `"${link.fullUrl}",`;
             csv += `"${link.shortAlias || ''}",`;
             csv += `"${link.shortLink || ''}",`;
+            // Add Bitly analytics URL if short link exists and group ID is available
+            const analyticsUrl = link.shortLink && groupId ? generateBitlyAnalyticsUrl(link.shortLink, groupId) : '';
+            csv += `"${analyticsUrl}",`;
             csv += `"${link.note || ''}",`;
             csv += `"${link.status}",`;
             csv += `"${link.createdAt}"\n`;
@@ -52,7 +89,7 @@
         utils.downloadCSV(csv, `comfyui_links_${new Date().toISOString().split('T')[0]}.csv`);
     }
 
-    function exportSelectedToCSV() {
+    async function exportSelectedToCSV() {
         const links = appState.getLinks();
         const selectedIndices = appState.getSelectedIndices();
         
@@ -63,7 +100,10 @@
 
         const selectedLinks = Array.from(selectedIndices).map(i => links[i]);
 
-        let csv = 'Source,Medium,Campaign,Content,Base_URL,Full_URL,Short_Alias,Short_Link,Note,Status,Created_At\n';
+        // Get Bitly Group ID for analytics URLs
+        const groupId = await getBitlyGroupId();
+
+        let csv = 'Source,Medium,Campaign,Content,Base_URL,Full_URL,Short_Alias,Short_Link,Bitly_Analytics_URL,Note,Status,Created_At\n';
         
         selectedLinks.forEach(link => {
             csv += `"${link.source}",`;
@@ -74,6 +114,9 @@
             csv += `"${link.fullUrl}",`;
             csv += `"${link.shortAlias || ''}",`;
             csv += `"${link.shortLink || ''}",`;
+            // Add Bitly analytics URL if short link exists and group ID is available
+            const analyticsUrl = link.shortLink && groupId ? generateBitlyAnalyticsUrl(link.shortLink, groupId) : '';
+            csv += `"${analyticsUrl}",`;
             csv += `"${link.note || ''}",`;
             csv += `"${link.status}",`;
             csv += `"${link.createdAt}"\n`;
