@@ -52,6 +52,37 @@
         utils.downloadCSV(csv, `comfyui_links_${new Date().toISOString().split('T')[0]}.csv`);
     }
 
+    function exportSelectedToCSV() {
+        const links = appState.getLinks();
+        const selectedIndices = appState.getSelectedIndices();
+        
+        if (selectedIndices.size === 0) {
+            utils.showWarning('Please select links to export', 'No Selection');
+            return;
+        }
+
+        const selectedLinks = Array.from(selectedIndices).map(i => links[i]);
+
+        let csv = 'Source,Medium,Campaign,Content,Base_URL,Full_URL,Short_Alias,Short_Link,Note,Status,Created_At\n';
+        
+        selectedLinks.forEach(link => {
+            csv += `"${link.source}",`;
+            csv += `"${link.medium}",`;
+            csv += `"${link.campaign}",`;
+            csv += `"${link.content || ''}",`;
+            csv += `"${link.baseUrl}",`;
+            csv += `"${link.fullUrl}",`;
+            csv += `"${link.shortAlias || ''}",`;
+            csv += `"${link.shortLink || ''}",`;
+            csv += `"${link.note || ''}",`;
+            csv += `"${link.status}",`;
+            csv += `"${link.createdAt}"\n`;
+        });
+
+        utils.downloadCSV(csv, `comfyui_links_selected_${new Date().toISOString().split('T')[0]}.csv`);
+        utils.showSuccess(`Exported ${selectedLinks.length} selected link${selectedLinks.length > 1 ? 's' : ''} to CSV`, 'Export Complete');
+    }
+
     function importFromCSV() {
         document.getElementById('importFileInput').click();
     }
@@ -309,6 +340,7 @@
     // Export to global scope
     window.storage = {
         exportToCSV,
+        exportSelectedToCSV,
         importFromCSV,
         handleImportFile,
         resetAllSettings

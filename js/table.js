@@ -146,6 +146,12 @@
         }
         
         document.getElementById('bulkDeleteBtn').disabled = count === 0;
+        
+        // Update export selected button state
+        const exportSelectedBtn = document.getElementById('exportSelectedBtn');
+        if (exportSelectedBtn) {
+            exportSelectedBtn.disabled = count === 0;
+        }
     }
 
     // ========== Inline Editing ==========
